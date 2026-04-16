@@ -1,7 +1,7 @@
 package main
 
-import "fmt"
+import "github.com/deemson/gbx/internal/tui"
 
 func main() {
-	fmt.Println("Checking out what's the first commit like, huh? Well, stay awesome.")
+	tui.Run()
 }
