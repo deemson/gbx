@@ -1,7 +1,9 @@
 package main
 
-import "github.com/deemson/gbx/internal/tui"
+import (
+	"github.com/deemson/gbx/internal/cmd"
+)
 
 func main() {
-	tui.Run()
+	cmd.Main()
 }
