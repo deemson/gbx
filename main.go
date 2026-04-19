@@ -1,9 +1,21 @@
 package main
 
 import (
-	"github.com/deemson/gbx/internal/cmd"
+	"os"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
+func noErr(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
 func main() {
-	cmd.Main()
+	curDir, err := os.Getwd()
+	noErr(err)
+	curDirEntries, err := os.ReadDir(curDir)
+	noErr(err)
+	spew.Dump(curDirEntries[0].Name())
 }
