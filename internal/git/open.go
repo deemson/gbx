@@ -1,12 +1,11 @@
 package git
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"fmt"
-	"os/exec"
 	"strings"
+
+	"github.com/deemson/gbx/internal/git/gitexec"
 )
 
 var (
@@ -16,30 +15,19 @@ var (
 )
 
 func Open(ctx context.Context, path string) (Repo, error) {
-	cmd := exec.Command("git", "-C", path, "rev-parse", "--show-toplevel")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
+	res, err := gitexec.Run(ctx, path, "rev-parse", "--show-toplevel")
 	if err != nil {
-		if cmd.ProcessState.ExitCode() == 128 {
-			stderrString := strings.TrimSpace(stderr.String())
-			if strings.Contains(stderrString, "not a git repository") {
+		if res.ExitCode == 128 {
+			switch {
+			case strings.Contains(res.Stderr, "not a git repository"):
 				return Repo{}, ErrNotRepository
-			}
-			if strings.Contains(stderrString, "Not a directory") {
+			case strings.Contains(res.Stderr, "Not a directory"):
 				return Repo{}, ErrNotDirectory
-			}
-			if strings.Contains(stderrString, "No such file or directory") {
+			case strings.Contains(res.Stderr, "No such file or directory"):
 				return Repo{}, ErrDoesNotExist
 			}
 		}
-		return Repo{}, fmt.Errorf(
-			"unknown error when opening repo %w: stdout=`%s` stderr=`%s`",
-			err,
-			strings.TrimSpace(stdout.String()),
-			strings.TrimSpace(stderr.String()),
-		)
+		return Repo{}, err
 	}
-	return Repo{}, nil
+	return Repo{path: path}, nil
 }
