@@ -12,6 +12,7 @@ import (
 )
 
 func Init(ctx context.Context, path string) (git.Repo, error) {
+
 	res, err := gitexec.Run(ctx, path, "init")
 	if err != nil {
 		return git.Repo{}, err
