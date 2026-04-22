@@ -1,8 +1,10 @@
-package git
+package git_test
 
 import (
+	"context"
 	"testing"
 
+	"github.com/deemson/gbx/internal/git/gitest"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -16,7 +18,14 @@ func TestStatusSuite(t *testing.T) {
 }
 
 func (s *StatusSuite) TestBasic() {
-	// dir := s.T().TempDir()
-	// ctx := context.Background()
-	// s.Require().NoError(err)
+	dir := s.T().TempDir()
+
+	ctx := context.Background()
+	repo, err := gitest.Init(ctx, dir)
+	s.Require().NoError(err)
+
+	repo.WriteFile("untracked-file", []byte("test"))
+
+	_, err = repo.Status(ctx)
+	s.Assert().NoError(err)
 }

@@ -2,32 +2,28 @@ package git
 
 import (
 	"context"
-	"errors"
 	"strings"
 
-	"github.com/deemson/gbx/internal/git/gitexec"
-)
-
-var (
-	ErrDoesNotExist  = errors.New("path does not exist")
-	ErrNotDirectory  = errors.New("not a directory")
-	ErrNotRepository = errors.New("not a git repository")
+	"github.com/deemson/gbx/internal/git/exec"
 )
 
 func Open(ctx context.Context, path string) (Repo, error) {
-	res, err := gitexec.Run(ctx, path, "rev-parse", "--show-toplevel")
+	res, err := exec.Git{
+		Path: path,
+	}.Run(ctx, "rev-parse", "--show-toplevel")
 	if err != nil {
 		if res.ExitCode == 128 {
+			stderr := string(res.Stderr)
 			switch {
-			case strings.Contains(res.Stderr, "not a git repository"):
+			case strings.Contains(stderr, "not a git repository"):
 				return Repo{}, ErrNotRepository
-			case strings.Contains(res.Stderr, "Not a directory"):
+			case strings.Contains(stderr, "Not a directory"):
 				return Repo{}, ErrNotDirectory
-			case strings.Contains(res.Stderr, "No such file or directory"):
+			case strings.Contains(stderr, "No such file or directory"):
 				return Repo{}, ErrDoesNotExist
 			}
 		}
-		return Repo{}, err
+		return Repo{}, NewErrUnknown(res, err)
 	}
 	return Repo{path: path}, nil
 }

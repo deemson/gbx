@@ -3,7 +3,7 @@ package git
 import (
 	"context"
 
-	"github.com/deemson/gbx/internal/git/gitexec"
+	"github.com/deemson/gbx/internal/git/exec"
 )
 
 type Repo struct {
@@ -14,7 +14,9 @@ func (r Repo) Path() string {
 	return r.path
 }
 
-func (r Repo) Status(ctx context.Context) error {
-	_, err := gitexec.Run(ctx, r.path, "status", "--porcelain")
-	return err
+func (r Repo) Status(ctx context.Context) (any, error) {
+	res, err := exec.Git{
+		Path: r.path,
+	}.Run(ctx, "status", "--null", "--porcelain=2")
+	return nil, NewErrUnknown(res, err)
 }
