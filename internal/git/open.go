@@ -23,7 +23,7 @@ func Open(ctx context.Context, path string) (Repo, error) {
 				return Repo{}, ErrDoesNotExist
 			}
 		}
-		return Repo{}, NewErrUnknown(res, err)
+		return Repo{}, NewUnknownRunErr(res, err)
 	}
 	return Repo{path: path}, nil
 }

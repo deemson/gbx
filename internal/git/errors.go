@@ -14,16 +14,16 @@ var (
 	ErrNotRepository = errors.New("not a git repository")
 )
 
-type UnknownError struct {
+type UnknownRunError struct {
 	Res exec.Result
 	Err error
 }
 
-func NewErrUnknown(res exec.Result, err error) *UnknownError {
-	return &UnknownError{Res: res, Err: err}
+func NewUnknownRunErr(res exec.Result, err error) *UnknownRunError {
+	return &UnknownRunError{Res: res, Err: err}
 }
 
-func (e *UnknownError) Error() string {
+func (e *UnknownRunError) Error() string {
 	errString := "<nil>"
 	if e.Err != nil {
 		errString = e.Err.Error()

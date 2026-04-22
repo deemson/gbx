@@ -13,10 +13,10 @@ func Init(ctx context.Context, path string) (Repo, error) {
 		Path: path,
 	}.Run(ctx, "init")
 	if err != nil {
-		return Repo{}, NewErrUnknown(res, err)
+		return Repo{}, NewUnknownRunErr(res, err)
 	}
 	if !strings.Contains(string(res.Stdout), "Initialized empty Git repository") {
-		return Repo{}, NewErrUnknown(res, errors.New("unexpecte stdout"))
+		return Repo{}, NewUnknownRunErr(res, errors.New("unexpecte stdout"))
 	}
 	return Repo{
 		path: path,
