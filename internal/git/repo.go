@@ -32,6 +32,6 @@ func (r Repo) Branch(ctx context.Context) (string, error) {
 }
 
 func (r Repo) Status(ctx context.Context) (any, error) {
-	res, err := r.runGit(ctx, "status", "--null", "--porcelain=2")
+	res, err := r.runGit(ctx, "status", "--null", "--porcelain=v2")
 	return nil, NewUnknownRunErr(res, err)
 }

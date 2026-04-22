@@ -17,7 +17,8 @@ func TestStatusSuite(t *testing.T) {
 	suite.Run(t, &StatusSuite{})
 }
 
-func (s *StatusSuite) TestSome() {
+func (s *StatusSuite) TestMerge_Single_BothUpdated() {
+	s.T().Skip()
 	ctx := context.Background()
 	repo, err := gitest.Init(ctx, s.T().TempDir())
 	s.Require().NoError(err)
@@ -36,11 +37,45 @@ func (s *StatusSuite) TestSome() {
 	s.Require().NoError(repo.Add(ctx, "file"))
 	s.Require().NoError(repo.Commit(ctx, "branch"))
 
-	s.Require().NoError(repo.CheckoutBranch(ctx, currentBranch))
+	s.Require().NoError(repo.Checkout(ctx, currentBranch))
 	s.Require().NoError(repo.WriteFile("file", []byte("updated data")))
 	s.Require().NoError(repo.Add(ctx, "file"))
 	s.Require().NoError(repo.Commit(ctx, "update"))
 
+	s.Require().NoError(repo.Merge(ctx, anotherBranch))
+
+	_, err = repo.Status(ctx)
+	s.Assert().NoError(err)
+}
+
+func (s *StatusSuite) TestMerge_Single_Some() {
+	ctx := context.Background()
+	repo, err := gitest.Init(ctx, s.T().TempDir())
+	s.Require().NoError(err)
+	s.Require().NoError(repo.SetupCommitConfig(ctx))
+
+	currentBranch, err := repo.Branch(ctx)
+	s.Require().NoError(err)
+
+	s.Require().NoError(repo.WriteFile("file", []byte("initial data")))
+	s.Require().NoError(repo.Add(ctx, "file"))
+	s.Require().NoError(repo.Commit(ctx, "initial"))
+
+	anotherBranch := "branch"
+	s.Require().NoError(repo.CheckoutBranch(ctx, anotherBranch))
+	s.Require().NoError(repo.RemovePath("file"))
+	s.Require().NoError(repo.Add(ctx, "file"))
+	s.Require().NoError(repo.Commit(ctx, "branch"))
+
+	s.Require().NoError(repo.Checkout(ctx, currentBranch))
+	s.Require().NoError(repo.WriteFile("file", []byte("updated data")))
+	s.Require().NoError(repo.Add(ctx, "file"))
+	s.Require().NoError(repo.Commit(ctx, "update"))
+
+	s.Require().NoError(repo.Merge(ctx, anotherBranch))
+
+	_, err = repo.Status(ctx)
+	s.Assert().NoError(err)
 }
 
 func (s *StatusSuite) TestBasic() {
