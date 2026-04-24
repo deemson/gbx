@@ -3,6 +3,22 @@ package git
 import (
 	"bytes"
 	"errors"
+	"fmt"
+)
+
+type PathState byte
+
+const (
+	UnknownPathState PathState = iota
+	NotChangedPathState
+	ModifiedPathState
+	AddedPathState
+	DeletedPathState
+	RenamedPathState
+	CopiedPathState
+	UpdatedPathState
+	UntrackedPathState
+	IgnoredPathState
 )
 
 type Status struct {
@@ -11,17 +27,27 @@ type Status struct {
 	Paths  []any
 }
 
-type RegularPathStatus struct {
+type UntrackedPathStatus struct {
 	Path string
+}
+
+type RegularPathStatus struct {
+	StateIndex PathState
+	StateFS    PathState
+	Path       string
 }
 
 type MovedPathStatus struct {
-	Path     string
-	OrigPath string
+	StateIndex PathState
+	StateFS    PathState
+	Path       string
+	OrigPath   string
 }
 
-type UnmergedPathStatus struct {
-	Path string
+type ConflictPathStatus struct {
+	StateThem PathState
+	StateUs   PathState
+	Path      string
 }
 
 // parseStatus parses according to https://www.kernel.org/pub/software/scm/git/docs/git-status.html
@@ -38,16 +64,27 @@ func parseStatus(data []byte) (Status, error) {
 		case '#':
 			err := parseStatusMetadata(token, &status)
 			if err != nil {
-				tokenErrs = append(tokenErrs, &StatusTokenParseError{
+				tokenErrs = append(tokenErrs, &TokenParseError{
 					TokenIndex: i,
 					Token:      token,
 					Err:        err,
 				})
 			}
+		case '?':
+			pathStatus, err := parseStatusUntrackedPathToken(token)
+			if err != nil {
+				tokenErrs = append(tokenErrs, &TokenParseError{
+					TokenIndex: i,
+					Token:      token,
+					Err:        err,
+				})
+			} else {
+				status.Paths = append(status.Paths, pathStatus)
+			}
 		case '1':
 			pathStatus, err := parseStatusRegularPathToken(token)
 			if err != nil {
-				tokenErrs = append(tokenErrs, &StatusTokenParseError{
+				tokenErrs = append(tokenErrs, &TokenParseError{
 					TokenIndex: i,
 					Token:      token,
 					Err:        err,
@@ -63,7 +100,7 @@ func parseStatus(data []byte) (Status, error) {
 			}
 			pathStatus, err := parseStatusMovedPathToken(token, origPathToken)
 			if err != nil {
-				tokenErrs = append(tokenErrs, &StatusTokenParseError{
+				tokenErrs = append(tokenErrs, &TokenParseError{
 					TokenIndex: i,
 					Token:      token,
 					Err:        err,
@@ -72,9 +109,9 @@ func parseStatus(data []byte) (Status, error) {
 				status.Paths = append(status.Paths, pathStatus)
 			}
 		case 'u':
-			pathStatus, err := parseStatusUnmergedPathToken(token)
+			pathStatus, err := parseStatusConflictPathToken(token)
 			if err != nil {
-				tokenErrs = append(tokenErrs, &StatusTokenParseError{
+				tokenErrs = append(tokenErrs, &TokenParseError{
 					TokenIndex: i,
 					Token:      token,
 					Err:        err,
@@ -83,7 +120,7 @@ func parseStatus(data []byte) (Status, error) {
 				status.Paths = append(status.Paths, pathStatus)
 			}
 		default:
-			tokenErrs = append(tokenErrs, &StatusTokenParseError{
+			tokenErrs = append(tokenErrs, &TokenParseError{
 				TokenIndex: i,
 				Token:      token,
 				Err:        errors.New("unknown token type"),
@@ -92,7 +129,7 @@ func parseStatus(data []byte) (Status, error) {
 	}
 	var err error
 	if len(tokenErrs) > 0 {
-		err = &StatusParseError{Errs: tokenErrs}
+		err = &ParseError{Errs: tokenErrs}
 	}
 	return status, err
 }
@@ -111,11 +148,21 @@ func parseStatusMetadata(token []byte, status *Status) error {
 	return nil
 }
 
+func parseStatusUntrackedPathToken(token []byte) (UntrackedPathStatus, error) {
+	// parts[0:2] is expected to be '? '
+	return UntrackedPathStatus{
+		Path: string(token[2:]),
+	}, nil
+}
+
 func parseStatusRegularPathToken(token []byte) (RegularPathStatus, error) {
 	parts := bytes.Split(token, []byte{' '})
 	// parts[0] is expected to be '1'
 	xy := parts[1]
-	_ = xy
+	stateIndex, stateFS, err := parseStatusPathXY(xy)
+	if err != nil {
+		return RegularPathStatus{}, err
+	}
 	sub := parts[2]
 	_ = sub
 	octalModeHead := parts[3]
@@ -128,9 +175,11 @@ func parseStatusRegularPathToken(token []byte) (RegularPathStatus, error) {
 	_ = hashHead
 	hashIndex := parts[7]
 	_ = hashIndex
-	path := parts[8]
+	path := bytes.Join(parts[8:], []byte{' '})
 	return RegularPathStatus{
-		Path: string(path),
+		Path:       string(path),
+		StateFS:    stateFS,
+		StateIndex: stateIndex,
 	}, nil
 }
 
@@ -138,7 +187,10 @@ func parseStatusMovedPathToken(token []byte, origPathToken []byte) (MovedPathSta
 	parts := bytes.Split(token, []byte{' '})
 	// parts[0] is expected to be '2'
 	xy := parts[1]
-	_ = xy
+	stateIndex, stateFS, err := parseStatusPathXY(xy)
+	if err != nil {
+		return MovedPathStatus{}, err
+	}
 	sub := parts[2]
 	_ = sub
 	octalModeHead := parts[3]
@@ -153,18 +205,23 @@ func parseStatusMovedPathToken(token []byte, origPathToken []byte) (MovedPathSta
 	_ = hashIndex
 	similarityScore := parts[8]
 	_ = similarityScore
-	path := parts[9]
+	path := bytes.Join(parts[9:], []byte{' '})
 	return MovedPathStatus{
-		Path:     string(path),
-		OrigPath: string(origPathToken),
+		Path:       string(path),
+		OrigPath:   string(origPathToken),
+		StateFS:    stateFS,
+		StateIndex: stateIndex,
 	}, nil
 }
 
-func parseStatusUnmergedPathToken(token []byte) (UnmergedPathStatus, error) {
+func parseStatusConflictPathToken(token []byte) (ConflictPathStatus, error) {
 	parts := bytes.Split(token, []byte{' '})
 	// parts[0] is expected to be 'u'
 	xy := parts[1]
-	_ = xy
+	stateUs, stateThem, err := parseStatusPathXY(xy)
+	if err != nil {
+		return ConflictPathStatus{}, err
+	}
 	sub := parts[2]
 	_ = sub
 	octalModeStage1 := parts[3]
@@ -181,9 +238,50 @@ func parseStatusUnmergedPathToken(token []byte) (UnmergedPathStatus, error) {
 	_ = hashStage2
 	hashStage3 := parts[9]
 	_ = hashStage3
-	path := parts[10]
-	_ = path
-	return UnmergedPathStatus{
-		Path: string(path),
+	path := bytes.Join(parts[10:], []byte{' '})
+	return ConflictPathStatus{
+		Path:      string(path),
+		StateUs:   stateUs,
+		StateThem: stateThem,
 	}, nil
+}
+
+func parseStatusPathState(b byte) PathState {
+	switch b {
+	case '.':
+		return NotChangedPathState
+	case 'M':
+		return ModifiedPathState
+	case 'A':
+		return AddedPathState
+	case 'D':
+		return DeletedPathState
+	case 'R':
+		return RenamedPathState
+	case 'C':
+		return CopiedPathState
+	case 'U':
+		return UpdatedPathState
+	case '?':
+		return UntrackedPathState
+	case '!':
+		return IgnoredPathState
+	default:
+		return UnknownPathState
+	}
+}
+
+func parseStatusPathXY(xy []byte) (PathState, PathState, error) {
+	if len(xy) != 2 {
+		return UnknownPathState, UnknownPathState, fmt.Errorf("XY len is %d expected 2", len(xy))
+	}
+	stateX := parseStatusPathState(xy[0])
+	if stateX == UnknownPathState {
+		return UnknownPathState, UnknownPathState, errors.New("unknown X in XY")
+	}
+	stateY := parseStatusPathState(xy[1])
+	if stateY == UnknownPathState {
+		return UnknownPathState, UnknownPathState, errors.New("unknown Y in XY")
+	}
+	return stateX, stateY, nil
 }

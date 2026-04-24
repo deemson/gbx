@@ -14,13 +14,13 @@ var (
 	ErrNotRepository = errors.New("not a git repository")
 )
 
-type StatusTokenParseError struct {
+type TokenParseError struct {
 	TokenIndex int
 	Token      []byte
 	Err        error
 }
 
-func (e StatusTokenParseError) Error() string {
+func (e TokenParseError) Error() string {
 	errString := "<nil>"
 	if e.Err != nil {
 		errString = e.Err.Error()
@@ -28,11 +28,11 @@ func (e StatusTokenParseError) Error() string {
 	return fmt.Sprintf("%s: token %d `%s`", errString, e.TokenIndex, string(e.Token))
 }
 
-type StatusParseError struct {
+type ParseError struct {
 	Errs []error
 }
 
-func (e *StatusParseError) Error() string {
+func (e *ParseError) Error() string {
 	errStrings := make([]string, len(e.Errs))
 	for i, err := range e.Errs {
 		errString := "<nil>"

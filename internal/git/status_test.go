@@ -22,11 +22,15 @@ func (s *StatusSuite) TestRenamedFile() {
 	repo := gitest.Init(s.T(), s.T().TempDir())
 	repo.SetupCommitConfig()
 
-	repo.WriteFileAdd("file-initial", "data")
+	repo.WriteFile("file untracked", "untracked")
+	repo.WriteFileAdd("file moved orig", "moved")
+	repo.WriteFileAdd("file modified index", "index initial")
+	repo.WriteFileAdd("file modified fs", "fs initial")
 	repo.Commit("initial")
-	repo.RemovePathAdd("file-initial")
-	repo.WriteFileAdd("file-moved", "data")
-	repo.WriteFileAdd("file-added", "added")
+	repo.RemovePathAdd("file moved orig")
+	repo.WriteFileAdd("file moved", "moved")
+	repo.WriteFileAdd("file modified index", "index modified")
+	repo.WriteFile("file modified fs", "fs modified")
 
 	branch := repo.BranchShowCurrent()
 	commit := repo.RevParseHead()
@@ -38,11 +42,23 @@ func (s *StatusSuite) TestRenamedFile() {
 			Branch: branch,
 			Paths: []any{
 				git.RegularPathStatus{
-					Path: "file-added",
+					StateIndex: git.NotChangedPathState,
+					StateFS:    git.ModifiedPathState,
+					Path:       "file modified fs",
+				},
+				git.RegularPathStatus{
+					StateIndex: git.ModifiedPathState,
+					StateFS:    git.NotChangedPathState,
+					Path:       "file modified index",
 				},
 				git.MovedPathStatus{
-					Path:     "file-moved",
-					OrigPath: "file-initial",
+					StateIndex: git.RenamedPathState,
+					StateFS:    git.NotChangedPathState,
+					Path:       "file moved",
+					OrigPath:   "file moved orig",
+				},
+				git.UntrackedPathStatus{
+					Path: "file untracked",
 				},
 			},
 		}, status)
@@ -53,6 +69,8 @@ func (s *StatusSuite) TestMergeConflicts() {
 	repo := gitest.Init(s.T(), s.T().TempDir())
 	repo.SetupCommitConfig()
 
+	repo.WriteFileAdd("du-file", "initial data")
+	repo.WriteFileAdd("ud-file", "initial data")
 	repo.WriteFileAdd("uu-file", "initial data")
 	repo.Commit("initial")
 
@@ -61,11 +79,15 @@ func (s *StatusSuite) TestMergeConflicts() {
 
 	repo.CheckoutBranch(anotherBranch)
 	repo.WriteFileAdd("aa-file", "branch data")
+	repo.WriteFileAdd("du-file", "branch data")
+	repo.RemovePathAdd("ud-file")
 	repo.WriteFileAdd("uu-file", "branch data")
 	repo.Commit("branch")
 
 	repo.Checkout(currentBranch)
 	repo.WriteFileAdd("aa-file", "main data")
+	repo.RemovePathAdd("du-file")
+	repo.WriteFileAdd("ud-file", "updated data")
 	repo.WriteFileAdd("uu-file", "updated data")
 	repo.Commit("update")
 
@@ -79,11 +101,25 @@ func (s *StatusSuite) TestMergeConflicts() {
 			Commit: commit,
 			Branch: currentBranch,
 			Paths: []any{
-				git.UnmergedPathStatus{
-					Path: "aa-file",
+				git.ConflictPathStatus{
+					StateThem: git.AddedPathState,
+					StateUs:   git.AddedPathState,
+					Path:      "aa-file",
 				},
-				git.UnmergedPathStatus{
-					Path: "uu-file",
+				git.ConflictPathStatus{
+					StateThem: git.UpdatedPathState,
+					StateUs:   git.DeletedPathState,
+					Path:      "du-file",
+				},
+				git.ConflictPathStatus{
+					StateThem: git.DeletedPathState,
+					StateUs:   git.UpdatedPathState,
+					Path:      "ud-file",
+				},
+				git.ConflictPathStatus{
+					StateThem: git.UpdatedPathState,
+					StateUs:   git.UpdatedPathState,
+					Path:      "uu-file",
 				},
 			},
 		}, status)
