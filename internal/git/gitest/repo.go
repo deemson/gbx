@@ -1,92 +1,125 @@
 package gitest
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path"
-	"strings"
+	"testing"
 
 	"github.com/deemson/gbx/internal/git"
 	"github.com/deemson/gbx/internal/git/exec"
+	"github.com/stretchr/testify/require"
 )
 
 type Repo struct {
-	git.Repo
+	repo git.Repo
+	t    *testing.T
+}
+
+func (r Repo) Repo() git.Repo {
+	return r.repo
 }
 
 func (r Repo) git() exec.Git {
-	return exec.Git{Path: r.Path()}
+	return exec.Git{Path: r.repo.Path()}
 }
 
-func (r Repo) runGit(ctx context.Context, args ...string) (exec.Result, error) {
+func (r Repo) runGit(args ...string) (exec.Result, error) {
+	ctx := context.Background()
 	return r.git().Run(ctx, args...)
 }
 
-func (r Repo) Checkout(ctx context.Context, what string) error {
-	res, err := r.git().Run(ctx, "checkout", what)
+func (r Repo) RevParseHead() string {
+	commit, err := r.repo.RevParseHead(context.Background())
+	require.NoError(r.t, err)
+	return commit
+}
+
+func (r Repo) BranchShowCurrent() string {
+	branch, err := r.repo.BranchShowCurrent(context.Background())
+	require.NoError(r.t, err)
+	return branch
+}
+
+func (r Repo) Checkout(what string) {
+	res, err := r.runGit("checkout", what)
 	if err != nil {
-		return git.NewUnknownRunErr(res, err)
+		require.NoError(r.t, git.NewUnknownRunErr(res, err))
 	}
-	return nil
 }
 
-func (r Repo) CheckoutBranch(ctx context.Context, name string) error {
-	res, err := r.git().Run(ctx, "checkout", "-b", name)
+func (r Repo) CheckoutBranch(name string) {
+	res, err := r.runGit("checkout", "-b", name)
 	if err != nil {
-		return git.NewUnknownRunErr(res, err)
+		require.NoError(r.t, git.NewUnknownRunErr(res, err))
 	}
-	return nil
 }
 
-func (r Repo) WriteFile(subPath string, data []byte) error {
-	return os.WriteFile(path.Join(r.Path(), subPath), data, 0644)
+func (r Repo) WriteFile(subPath string, data string) {
+	require.NoError(r.t, os.WriteFile(path.Join(r.repo.Path(), subPath), []byte(data), 0644))
 }
 
-func (r Repo) RemovePath(subPath string) error {
-	return os.Remove(path.Join(r.Path(), subPath))
+func (r Repo) RemovePath(subPath string) {
+	require.NoError(r.t, os.Remove(path.Join(r.repo.Path(), subPath)))
 }
 
-func (r Repo) Add(ctx context.Context, subPath string) error {
-	res, err := r.runGit(ctx, "add", subPath)
+func (r Repo) Add(subPath string) {
+	res, err := r.runGit("add", subPath)
 	if err != nil {
-		return git.NewUnknownRunErr(res, err)
+		require.NoError(r.t, git.NewUnknownRunErr(res, err))
 	}
-	return nil
 }
 
-func (r Repo) SetupCommitConfig(ctx context.Context) error {
-	g := r.git()
+func (r Repo) WriteFileAdd(subPath string, data string) {
+	r.WriteFile(subPath, data)
+	r.Add(subPath)
+}
+
+func (r Repo) RemovePathAdd(subPath string) {
+	r.RemovePath(subPath)
+	r.Add(subPath)
+}
+
+func (r Repo) SetupCommitConfig() {
 	for _, args := range [][]string{
 		{"config", "user.email", "test@example.com"},
 		{"config", "user.name", "test"},
 		{"config", "commit.gpgsign", "false"},
 	} {
-		if res, err := g.Run(ctx, args...); err != nil {
-			return git.NewUnknownRunErr(res, err)
+		if res, err := r.runGit(args...); err != nil {
+			require.NoError(r.t, git.NewUnknownRunErr(res, err))
 		}
 	}
-	return nil
 }
 
-func (r Repo) Commit(ctx context.Context, message string) error {
-	res, err := r.git().Run(ctx, "commit", "-m", message)
+func (r Repo) Commit(message string) {
+	res, err := r.runGit("commit", "-m", message)
 	if err != nil {
-		return git.NewUnknownRunErr(res, err)
+		require.NoError(r.t, git.NewUnknownRunErr(res, err))
 	}
-	return nil
 }
 
-func (r Repo) Merge(ctx context.Context, what string) error {
-	res, err := r.git().Run(ctx, "merge", what)
+func (r Repo) Merge(what string) {
+	res, err := r.runGit("merge", what)
 	if err != nil {
-		if res.ExitCode == 1 && strings.Contains(string(res.Stdout), "Automatic merge failed; fix conflicts") {
-			return nil
+		if res.ExitCode == 1 && bytes.Contains(res.Stdout, []byte("Automatic merge failed; fix conflicts")) {
+			return
 		}
-		return git.NewUnknownRunErr(res, err)
+		require.NoError(r.t, git.NewUnknownRunErr(res, err))
 	}
-	return nil
 }
 
-func (r Repo) Git(ctx context.Context, args ...string) (exec.Result, error) {
-	return exec.Git{Path: r.Path()}.Run(ctx, args...)
+func (r Repo) Push() {
+	res, err := r.runGit("push")
+	if err != nil {
+		require.NoError(r.t, git.NewUnknownRunErr(res, err))
+	}
+}
+
+func (r Repo) Pull() {
+	res, err := r.runGit("pull")
+	if err != nil {
+		require.NoError(r.t, git.NewUnknownRunErr(res, err))
+	}
 }

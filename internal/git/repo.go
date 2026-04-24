@@ -1,8 +1,8 @@
 package git
 
 import (
+	"bytes"
 	"context"
-	"strings"
 
 	"github.com/deemson/gbx/internal/git/exec"
 )
@@ -23,15 +23,31 @@ func (r Repo) runGit(ctx context.Context, args ...string) (exec.Result, error) {
 	return r.git().Run(ctx, args...)
 }
 
-func (r Repo) Branch(ctx context.Context) (string, error) {
+func (r Repo) RevParseHead(ctx context.Context) (string, error) {
+	res, err := r.runGit(ctx, "rev-parse", "HEAD")
+	if err != nil {
+		return "", NewUnknownRunErr(res, err)
+	}
+	return string(bytes.TrimSpace(res.Stdout)), nil
+}
+
+func (r Repo) BranchShowCurrent(ctx context.Context) (string, error) {
 	res, err := r.runGit(ctx, "branch", "--show-current")
 	if err != nil {
 		return "", NewUnknownRunErr(res, err)
 	}
-	return strings.TrimSpace(string(res.Stdout)), nil
+	return string(bytes.TrimSpace(res.Stdout)), nil
 }
 
-func (r Repo) Status(ctx context.Context) (any, error) {
-	res, err := r.runGit(ctx, "status", "--null", "--porcelain=v2")
+func (r Repo) Status(ctx context.Context) (Status, error) {
+	res, err := r.runGit(ctx, "status", "-z", "--porcelain=v2", "--branch", "--show-stash")
+	if err != nil {
+		return Status{}, NewUnknownRunErr(res, err)
+	}
+	return parseStatus(res.Stdout)
+}
+
+func (r Repo) DiffNumstat(ctx context.Context) (any, error) {
+	res, err := r.runGit(ctx, "diff", "-z", "--numstat")
 	return nil, NewUnknownRunErr(res, err)
 }

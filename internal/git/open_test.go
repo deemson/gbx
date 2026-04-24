@@ -19,15 +19,15 @@ func TestOpenSuite(t *testing.T) {
 	suite.Run(t, &OpenSuite{})
 }
 
-func (s *OpenSuite) TestOpen() {
+func (s *OpenSuite) TestErrDoesNotExist() {
 	dir := s.T().TempDir()
 	_, err := git.Open(context.Background(), path.Join(dir, "non-existent"))
 	if s.Assert().Error(err) {
-		s.Assert().ErrorIs(err,  git.ErrDoesNotExist)
+		s.Assert().ErrorIs(err, git.ErrDoesNotExist)
 	}
 }
 
-func (s *OpenSuite) TestFile() {
+func (s *OpenSuite) TestErrNotDirectory() {
 	dir := s.T().TempDir()
 	filePath := path.Join(dir, "test")
 	s.Require().NoError(os.WriteFile(filePath, []byte("test"), 0755))
@@ -37,10 +37,10 @@ func (s *OpenSuite) TestFile() {
 	}
 }
 
-func (s *OpenSuite) TestNonGitDir() {
+func (s *OpenSuite) TestErrNotRepository() {
 	dir := s.T().TempDir()
 	_, err := git.Open(context.Background(), dir)
 	if s.Assert().Error(err) {
-		s.Assert().ErrorIs(err,  git.ErrNotRepository)
+		s.Assert().ErrorIs(err, git.ErrNotRepository)
 	}
 }

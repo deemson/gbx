@@ -14,6 +14,36 @@ var (
 	ErrNotRepository = errors.New("not a git repository")
 )
 
+type StatusTokenParseError struct {
+	TokenIndex int
+	Token      []byte
+	Err        error
+}
+
+func (e StatusTokenParseError) Error() string {
+	errString := "<nil>"
+	if e.Err != nil {
+		errString = e.Err.Error()
+	}
+	return fmt.Sprintf("%s: token %d `%s`", errString, e.TokenIndex, string(e.Token))
+}
+
+type StatusParseError struct {
+	Errs []error
+}
+
+func (e *StatusParseError) Error() string {
+	errStrings := make([]string, len(e.Errs))
+	for i, err := range e.Errs {
+		errString := "<nil>"
+		if err != nil {
+			errString = err.Error()
+		}
+		errStrings[i] = errString
+	}
+	return strings.Join(errStrings, "; ")
+}
+
 type UnknownRunError struct {
 	Res exec.Result
 	Err error
