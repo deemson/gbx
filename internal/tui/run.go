@@ -2,10 +2,9 @@ package tui
 
 import (
 	tea "charm.land/bubbletea/v2"
-	"github.com/deemson/gbx/tui/model"
 )
 
 func Run() error {
-	_, err := tea.NewProgram(model.Main{}).Run()
+	_, err := tea.NewProgram(newMainModel()).Run()
 	return err
 }
