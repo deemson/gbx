@@ -9,16 +9,16 @@ import (
 type PathState byte
 
 const (
-	UnknownPathState PathState = iota
-	NotChangedPathState
-	ModifiedPathState
-	AddedPathState
-	DeletedPathState
-	RenamedPathState
-	CopiedPathState
-	UpdatedPathState
-	UntrackedPathState
-	IgnoredPathState
+	UnknownPathState    PathState = iota // 0
+	NotChangedPathState                  // 1
+	ModifiedPathState                    // 2
+	AddedPathState                       // 3
+	DeletedPathState                     // 4
+	RenamedPathState                     // 5
+	CopiedPathState                      // 6
+	UpdatedPathState                     // 7
+	UntrackedPathState                   // 8
+	IgnoredPathState                     // 9
 )
 
 type Status struct {

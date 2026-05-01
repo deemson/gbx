@@ -18,7 +18,7 @@ func TestDiffNumstatSuite(t *testing.T) {
 	suite.Run(t, &DiffNumStatHeadSuite{})
 }
 
-func (s *DiffNumStatHeadSuite) TestSome() {
+func (s *DiffNumStatHeadSuite) TestSimple() {
 	repo := gitest.Init(s.T(), s.T().TempDir())
 	repo.SetupCommitConfig()
 
