@@ -5,6 +5,6 @@ import (
 )
 
 func Run() error {
-	_, err := tea.NewProgram(newMainModel()).Run()
+	_, err := tea.NewProgram(newModel(), tea.WithoutCatchPanics()).Run()
 	return err
 }
