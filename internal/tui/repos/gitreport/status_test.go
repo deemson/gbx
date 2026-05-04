@@ -2,8 +2,10 @@ package gitreport_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
+	"github.com/deemson/gbx/internal/git"
 	"github.com/deemson/gbx/internal/git/gitest"
 	"github.com/deemson/gbx/internal/tui/repos/gitreport"
 	"github.com/rs/zerolog/log"
@@ -25,22 +27,6 @@ func (s *StatusSuite) assert(repo gitest.Repo, expected gitreport.Status) {
 		actual := gitreport.NewStatus(logger.WithContext(context.Background()), status)
 		s.Assert().Equal(expected, actual)
 	}
-}
-
-func (s *StatusSuite) TestClean() {
-	repo := gitest.Init(s.T(), s.T().TempDir())
-	repo.SetupCommitConfig()
-
-	repo.WriteFile("untracked", "data")
-
-	branch := repo.BranchShowCurrent()
-
-	s.assert(repo, gitreport.Status{
-		Branch:    branch,
-		Commit:    "(initial)",
-		IsClean:   true,
-		Untracked: 1,
-	})
 }
 
 func (s *StatusSuite) TestConflicts() {
@@ -135,7 +121,7 @@ func (s *StatusSuite) TestAdded() {
 
 	s.assert(repo, gitreport.Status{
 		Branch:    branch,
-		Commit:    "(initial)",
+		Commit:    git.InitialCommitHash,
 		Untracked: 1,
 		Added:     1,
 	})
@@ -158,5 +144,39 @@ func (s *StatusSuite) TestMoved() {
 		Branch: branch,
 		Commit: commit,
 		Moved:  1,
+	})
+}
+
+func (s *StatusSuite) TestUpstream() {
+	remoteRepoDir := s.T().TempDir()
+	gitest.InitBare(s.T(), remoteRepoDir)
+
+	repo := gitest.Init(s.T(), s.T().TempDir())
+	repo.RemoteAdd("origin", remoteRepoDir)
+
+	anotherRepo := gitest.Init(s.T(), s.T().TempDir())
+	anotherRepo.RemoteAdd("origin", remoteRepoDir)
+	anotherRepo.SetupCommitConfig()
+	anotherRepo.WriteFileAdd("another-repo-file-1", "data")
+	anotherRepo.Commit("another repo commit 1")
+	anotherRepo.WriteFileAdd("another-repo-file-2", "data")
+	anotherRepo.Commit("another repo commit 2")
+	anotherRepo.PushSetUpstream("origin", anotherRepo.BranchShowCurrent())
+
+	repo.Fetch()
+	repo.SetupCommitConfig()
+	repo.WriteFileAdd("repo-file", "data")
+	repo.Commit("repo commit")
+	repo.BranchSetUpstreamTo("origin", anotherRepo.BranchShowCurrent(), repo.BranchShowCurrent())
+
+	branch := repo.BranchShowCurrent()
+	commit := repo.RevParseHead()
+
+	s.assert(repo, gitreport.Status{
+		Branch:   branch,
+		Commit:   commit,
+		Upstream: fmt.Sprintf("origin/%s", anotherRepo.BranchShowCurrent()),
+		Ahead:    1,
+		Behind:   2,
 	})
 }

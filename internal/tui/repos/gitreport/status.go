@@ -11,7 +11,9 @@ import (
 type Status struct {
 	Branch        string
 	Commit        string
-	IsClean       bool
+	Upstream      string
+	Ahead         int
+	Behind        int
 	Unknown       int
 	Untracked     int
 	Conflicts     int
@@ -30,9 +32,11 @@ func NewStatus(ctx context.Context, status git.Status) Status {
 		Logger()
 
 	report := Status{
-		Branch:  status.Branch,
-		Commit:  status.Commit,
-		IsClean: true,
+		Branch:   status.Branch,
+		Commit:   status.Commit,
+		Upstream: status.Upstream,
+		Ahead:    status.Ahead,
+		Behind:   status.Behind,
 	}
 
 	for _, pathStatus := range status.Paths {
@@ -40,10 +44,8 @@ func NewStatus(ctx context.Context, status git.Status) Status {
 		case git.UntrackedPathStatus:
 			report.Untracked += 1
 		case git.ConflictPathStatus:
-			report.IsClean = false
 			report.Conflicts += 1
 		case git.RegularPathStatus:
-			report.IsClean = false
 			stateIndex := pathStatus.StateIndex
 			stateFS := pathStatus.StateFS
 			pathLogger := logger.With().
@@ -68,7 +70,6 @@ func NewStatus(ctx context.Context, status git.Status) Status {
 				report.Unknown += 1
 			}
 		case git.MovedPathStatus:
-			report.IsClean = false
 			stateIndex := pathStatus.StateIndex
 			stateFS := pathStatus.StateFS
 			pathLogger := logger.With().
@@ -85,7 +86,6 @@ func NewStatus(ctx context.Context, status git.Status) Status {
 				report.Unknown += 1
 			}
 		default:
-			report.IsClean = false
 			logger.Warn().Str("status", spew.Sdump(pathStatus)).Msg("unknown path status")
 			report.Unknown += 1
 		}
