@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strconv"
 )
 
 type PathState byte
@@ -22,9 +23,12 @@ const (
 )
 
 type Status struct {
-	Commit string
-	Branch string
-	Paths  []any
+	Commit   string
+	Branch   string
+	Upstream string
+	Ahead    int
+	Behind   int
+	Paths    []any
 }
 
 type UntrackedPathStatus struct {
@@ -142,6 +146,25 @@ func parseStatusMetadata(token []byte, status *Status) error {
 		status.Commit = string(parts[2])
 	case "branch.head":
 		status.Branch = string(parts[2])
+	case "branch.upstream":
+		status.Upstream = string(parts[2])
+	case "branch.ab":
+		if len(parts[2]) < 2 || parts[2][0] != '+' {
+			return errors.New("bad ahead")
+		}
+		ahead, err := strconv.Atoi(string(parts[2][1:]))
+		if err != nil {
+			return fmt.Errorf("parsing ahead: %w", err)
+		}
+		status.Ahead = ahead
+		if len(parts[3]) < 2 || parts[3][0] != '-' {
+			return errors.New("bad behind")
+		}
+		behind, err := strconv.Atoi(string(parts[3][1:]))
+		if err != nil {
+			return fmt.Errorf("parsing behind: %w", err)
+		}
+		status.Behind = behind
 	default:
 		return errors.New("unknown metadata")
 	}

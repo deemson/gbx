@@ -53,3 +53,11 @@ func (s *DiffNumStatHeadSuite) TestSimple() {
 		}, diffNumStat)
 	}
 }
+
+func (s *DiffNumStatHeadSuite) TestNoCommits() {
+	repo := gitest.Init(s.T(), s.T().TempDir())
+	_, err := repo.Repo().DiffNumStatHead(context.Background())
+	if s.Assert().Error(err) {
+		s.Assert().ErrorIs(err, git.ErrRepositoryHasNoCommits)
+	}
+}

@@ -3,6 +3,7 @@ package gitest
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path"
 	"testing"
@@ -40,6 +41,13 @@ func (r Repo) BranchShowCurrent() string {
 	branch, err := r.repo.BranchShowCurrent(context.Background())
 	require.NoError(r.t, err)
 	return branch
+}
+
+func (r Repo) BranchSetUpstreamTo(remote, remoteBranch, branch string) {
+	res, err := r.runGit("branch", fmt.Sprintf("--set-upstream-to=%s/%s", remote, remoteBranch), branch)
+	if err != nil {
+		require.NoError(r.t, git.NewUnknownRunErr(res, err))
+	}
 }
 
 func (r Repo) Checkout(what string) {
@@ -119,6 +127,27 @@ func (r Repo) Push() {
 
 func (r Repo) Pull() {
 	res, err := r.runGit("pull")
+	if err != nil {
+		require.NoError(r.t, git.NewUnknownRunErr(res, err))
+	}
+}
+
+func (r Repo) Fetch() {
+	res, err := r.runGit("fetch")
+	if err != nil {
+		require.NoError(r.t, git.NewUnknownRunErr(res, err))
+	}
+}
+
+func (r Repo) RemoteAdd(name, url string) {
+	res, err := r.runGit("remote", "add", name, url)
+	if err != nil {
+		require.NoError(r.t, git.NewUnknownRunErr(res, err))
+	}
+}
+
+func (r Repo) PushSetUpstream(upstream, branch string) {
+	res, err := r.runGit("push", "--set-upstream", upstream, branch)
 	if err != nil {
 		require.NoError(r.t, git.NewUnknownRunErr(res, err))
 	}

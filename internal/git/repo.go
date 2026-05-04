@@ -3,6 +3,7 @@ package git
 import (
 	"bytes"
 	"context"
+	"strings"
 
 	"github.com/deemson/gbx/internal/git/exec"
 )
@@ -50,6 +51,12 @@ func (r Repo) Status(ctx context.Context) (Status, error) {
 func (r Repo) DiffNumStatHead(ctx context.Context) (DiffNumStat, error) {
 	res, err := r.runGit(ctx, "diff", "HEAD", "-z", "--numstat")
 	if err != nil {
+		if res.ExitCode == 128 {
+			stderr := string(res.Stderr)
+			if strings.Contains(stderr, "'HEAD': unknown revision") {
+				return DiffNumStat{}, ErrRepositoryHasNoCommits
+			}
+		}
 		return DiffNumStat{}, NewUnknownRunErr(res, err)
 	}
 	return parseDiffNumStat(res.Stdout)

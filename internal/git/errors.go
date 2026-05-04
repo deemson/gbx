@@ -12,6 +12,8 @@ var (
 	ErrDoesNotExist  = errors.New("path does not exist")
 	ErrNotDirectory  = errors.New("not a directory")
 	ErrNotRepository = errors.New("not a git repository")
+
+	ErrRepositoryHasNoCommits = errors.New("repository has no commits")
 )
 
 type TokenParseError struct {

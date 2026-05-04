@@ -2,6 +2,7 @@ package git_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/deemson/gbx/internal/git"
@@ -122,6 +123,40 @@ func (s *StatusSuite) TestMergeConflicts() {
 					Path:      "uu-file",
 				},
 			},
+		}, status)
+	}
+}
+
+func (s *StatusSuite) TestUpstream() {
+	remoteRepoDir := s.T().TempDir()
+	gitest.InitBare(s.T(), remoteRepoDir)
+
+	repo := gitest.Init(s.T(), s.T().TempDir())
+	repo.RemoteAdd("origin", remoteRepoDir)
+
+	anotherRepo := gitest.Init(s.T(), s.T().TempDir())
+	anotherRepo.RemoteAdd("origin", remoteRepoDir)
+	anotherRepo.SetupCommitConfig()
+	anotherRepo.WriteFileAdd("another-repo-file-1", "data")
+	anotherRepo.Commit("another repo commit 1")
+	anotherRepo.WriteFileAdd("another-repo-file-2", "data")
+	anotherRepo.Commit("another repo commit 2")
+	anotherRepo.PushSetUpstream("origin", anotherRepo.BranchShowCurrent())
+
+	repo.Fetch()
+	repo.SetupCommitConfig()
+	repo.WriteFileAdd("repo-file", "data")
+	repo.Commit("repo commit")
+	repo.BranchSetUpstreamTo("origin", anotherRepo.BranchShowCurrent(), repo.BranchShowCurrent())
+
+	status, err := repo.Repo().Status(context.Background())
+	if s.Assert().NoError(err) {
+		s.Assert().Equal(git.Status{
+			Commit:   repo.RevParseHead(),
+			Branch:   repo.BranchShowCurrent(),
+			Upstream: fmt.Sprintf("origin/%s", anotherRepo.BranchShowCurrent()),
+			Ahead:    1,
+			Behind:   2,
 		}, status)
 	}
 }
