@@ -2,6 +2,7 @@ package row
 
 import (
 	"context"
+	"errors"
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
@@ -40,6 +41,10 @@ func (m Model) Status() tea.Cmd {
 	return func() tea.Msg {
 		status, err := m.repo.Status(context.Background())
 		if err != nil {
+			log.Error().
+				Err(err).
+				Str("name", m.name).
+				Msg("failed loading status")
 		}
 		return StatusMsg{
 			msg: msg{
@@ -54,6 +59,21 @@ func (m Model) LinesChanged() tea.Cmd {
 	return func() tea.Msg {
 		diffNumStat, err := m.repo.DiffNumStatHead(context.Background())
 		if err != nil {
+			if errors.Is(err, git.ErrRepositoryHasNoCommits) {
+				return LinesChangedMsg{
+					msg: msg{
+						Name: m.name,
+					},
+					LinesChanged: gitreport.LinesChanged{
+						Added:   0,
+						Deleted: 0,
+					},
+				}
+			}
+			log.Error().
+				Err(err).
+				Str("name", m.name).
+				Msg("failed loading lines changed")
 		}
 		return LinesChangedMsg{
 			msg: msg{

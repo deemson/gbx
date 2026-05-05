@@ -17,7 +17,7 @@ func NewModel() Model {
 	tbl := table.New(
 		table.WithColumns(row.TableColumns()),
 		table.WithFocused(false),
-		table.WithWidth(50),
+		table.WithWidth(51),
 	)
 	return Model{
 		directory:      "",
