@@ -3,23 +3,13 @@ package row
 import (
 	"context"
 	"errors"
+	"fmt"
 
-	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"github.com/deemson/gbx/internal/git"
 	"github.com/deemson/gbx/internal/tui/repos/gitreport"
 	"github.com/rs/zerolog/log"
 )
-
-func TableColumns() []table.Column {
-	return []table.Column{
-		{Title: "Name", Width: 10},
-		{Title: "Branch", Width: 10},
-		{Title: "Commit", Width: 10},
-		{Title: "Status", Width: 10},
-		{Title: "Diff", Width: 10},
-	}
-}
 
 type Model struct {
 	name         string
@@ -104,28 +94,18 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) TableRow() table.Row {
-	branch, commit, status := m.renderStatus()
-	linesChanged := m.renderLinesChanged()
-	return table.Row{
+func (m Model) View() []string {
+	status := "..."
+	if m.status != nil {
+		status = fmt.Sprintf("%s +%d -%d", m.status.Branch, m.status.Ahead, m.status.Behind)
+	}
+	diff := "..."
+	if m.linesChanged != nil {
+		diff = fmt.Sprintf("+%d -%d", m.linesChanged.Added, m.linesChanged.Deleted)
+	}
+	return []string{
 		m.name,
-		branch,
-		commit,
 		status,
-		linesChanged,
+		diff,
 	}
-}
-
-func (m Model) renderStatus() (string, string, string) {
-	if m.status == nil {
-		return "loading status", "", ""
-	}
-	return m.status.Branch, m.status.Commit, "ok"
-}
-
-func (m Model) renderLinesChanged() string {
-	if m.linesChanged == nil {
-		return "loading lines"
-	}
-	return "ok"
 }

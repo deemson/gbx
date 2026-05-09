@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/deemson/gbx/internal/git"
+	"github.com/rs/zerolog/log"
 )
 
 func InitCmd() tea.Msg {
@@ -35,7 +36,11 @@ func newOpenRepoCmd(dir string, dirEntry os.DirEntry) tea.Cmd {
 			if errors.Is(err, git.ErrNotRepository) {
 				return nil
 			}
-			panic(err)
+			log.Error().
+				Err(err).
+				Str("dir", dir).
+				Str("entry", dirEntry.Name()).
+				Msg("failed to open repo")
 		}
 		return RepoFoundMsg{
 			Name: dirEntry.Name(),

@@ -13,6 +13,8 @@ var (
 	ErrNotDirectory  = errors.New("not a directory")
 	ErrNotRepository = errors.New("not a git repository")
 
+	ErrDotGitOpen = errors.New("attempt to open .git/ as a repository")
+
 	ErrRepositoryHasNoCommits = errors.New("repository has no commits")
 )
 
