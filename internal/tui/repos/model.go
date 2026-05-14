@@ -13,6 +13,9 @@ import (
 type Model struct {
 	directory      string
 	rowsByRepoName map[string]row.Model
+	width          int
+	height         int
+	hasSize        bool
 }
 
 func NewModel() Model {
@@ -20,6 +23,13 @@ func NewModel() Model {
 		directory:      "",
 		rowsByRepoName: map[string]row.Model{},
 	}
+}
+
+func (m Model) Resize(width, height int) Model {
+	m.width = width
+	m.height = height
+	m.hasSize = true
+	return m
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -69,5 +79,11 @@ func (m Model) View() string {
 	for i, name := range names {
 		rows[i] = m.rowsByRepoName[name].View()
 	}
-	return table.New().Border(lipgloss.HiddenBorder()).Rows(rows...).Render()
+	t := table.New().
+		Border(lipgloss.HiddenBorder()).
+		Rows(rows...)
+	if m.hasSize {
+		t.Width(m.width).Height(m.height)
+	}
+	return t.Render()
 }

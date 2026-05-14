@@ -41,6 +41,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case tea.WindowSizeMsg:
+		m.resize(msg.Width, msg.Height)
 		return m, nil
 	}
 	var reposCmd tea.Cmd
@@ -48,6 +49,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var inputCmd tea.Cmd
 	m.input, inputCmd = m.input.Update(msg)
 	return m, tea.Batch(reposCmd, inputCmd)
+}
+
+func (m *model) resize(width, height int) {
+	m.input.SetWidth(width)
+	m.repos = m.repos.Resize(width, max(0, height-lipgloss.Height(m.input.View())))
 }
 
 func (m model) View() tea.View {
