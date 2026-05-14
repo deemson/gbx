@@ -1,23 +1,35 @@
 package tui
 
 import (
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/deemson/gbx/internal/tui/repos"
 )
 
 type model struct {
 	repos repos.Model
+	input textinput.Model
 }
 
 func newModel() model {
+	input := textinput.New()
+	// input.SetVirtualCursor(false)
+	input.ShowSuggestions = true
+	input.SetSuggestions([]string{"thing1", "thing2"})
+	// input.Placeholder = "something"
+	input.SetWidth(15)
+	input.Focus()
 	return model{
 		repos: repos.NewModel(),
+		input: input,
 	}
 }
 
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
 		repos.InitCmd,
+		textinput.Blink,
 	)
 }
 
@@ -25,18 +37,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
-		case "q", "ctrl+c":
+		case "esc", "ctrl+c":
 			return m, tea.Quit
 		}
+	case tea.WindowSizeMsg:
+		return m, nil
 	}
 	var reposCmd tea.Cmd
 	m.repos, reposCmd = m.repos.Update(msg)
-	return m, tea.Batch(reposCmd)
+	var inputCmd tea.Cmd
+	m.input, inputCmd = m.input.Update(msg)
+	return m, tea.Batch(reposCmd, inputCmd)
 }
 
 func (m model) View() tea.View {
+	repos := m.repos.View()
+	// cursor := m.input.Cursor()
+	// cursor.Y = lipgloss.Height(repos)
 	return tea.View{
-		Content:   m.repos.View(),
+		Content: lipgloss.JoinVertical(
+			lipgloss.Top,
+			repos,
+			m.input.View(),
+		),
 		AltScreen: true,
+		// Cursor:    cursor,
 	}
 }
