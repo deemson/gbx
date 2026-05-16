@@ -10,25 +10,43 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+const (
+	initialWidth = 10
+)
+
 type Model struct {
 	directory      string
 	rowsByRepoName map[string]row.Model
 	width          int
-	height         int
-	hasSize        bool
+	table          *table.Table
 }
 
 func NewModel() Model {
 	return Model{
 		directory:      "",
 		rowsByRepoName: map[string]row.Model{},
+		width:          initialWidth,
+		table:          table.New().Border(lipgloss.HiddenBorder()).Width(initialWidth),
 	}
 }
 
-func (m Model) Resize(width, height int) Model {
+func (m Model) SetWidth(width int) Model {
 	m.width = width
-	m.height = height
-	m.hasSize = true
+	m.table = m.table.Width(width)
+	return m
+}
+
+func (m Model) refreshTableRows() Model {
+	names := make([]string, 0, len(m.rowsByRepoName))
+	for name := range m.rowsByRepoName {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	rows := make([][]string, len(names))
+	for i, name := range names {
+		rows[i] = m.rowsByRepoName[name].View()
+	}
+	m.table = m.table.ClearRows().Rows(rows...)
 	return m
 }
 
@@ -54,10 +72,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			Msg("found repo")
 		r := row.NewModel(msg.Name, msg.Repo)
 		m.rowsByRepoName[msg.Name] = r
+		m = m.refreshTableRows()
 		return m, r.Refresh()
 	case row.Msg:
 		var cmd tea.Cmd
 		m.rowsByRepoName[msg.RepoName()], cmd = m.rowsByRepoName[msg.RepoName()].Update(msg)
+		m = m.refreshTableRows()
 		return m, cmd
 	}
 	return m, nil
@@ -70,20 +90,5 @@ func (m Model) View() string {
 	if len(m.rowsByRepoName) == 0 {
 		return "discovering repos"
 	}
-	names := make([]string, 0, len(m.rowsByRepoName))
-	for name := range m.rowsByRepoName {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	rows := make([][]string, len(names))
-	for i, name := range names {
-		rows[i] = m.rowsByRepoName[name].View()
-	}
-	t := table.New().
-		Border(lipgloss.HiddenBorder()).
-		Rows(rows...)
-	if m.hasSize {
-		t.Width(m.width).Height(m.height)
-	}
-	return t.Render()
+	return m.table.Render()
 }

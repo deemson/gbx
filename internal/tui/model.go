@@ -53,7 +53,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) resize(width, height int) {
 	m.input.SetWidth(width)
-	m.repos = m.repos.Resize(width, max(0, height-lipgloss.Height(m.input.View())))
+	m.repos = m.repos.SetWidth(width)
 }
 
 func (m model) View() tea.View {
