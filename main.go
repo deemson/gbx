@@ -5,17 +5,13 @@ import (
 	"path"
 	"time"
 
-	"github.com/deemson/gbx/internal/tui"
+	"github.com/deemson/gbx/internal/tui2"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
 func main() {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
-	// logger := zerolog.New(zerolog.ConsoleWriter{
-	// 	Out:        os.Stderr,
-	// 	TimeFormat: time.TimeOnly,
-	// }).With().Timestamp().Logger()
 	homeDir := os.Getenv("HOME")
 	if homeDir == "" {
 		panic("empty home dir")
@@ -26,8 +22,11 @@ func main() {
 	}
 	log.Logger = zerolog.New(logFile).With().Timestamp().Logger()
 	zerolog.DefaultContextLogger = &log.Logger
-	if err := tui.Run(); err != nil {
-		// logger.Fatal().Err(err).Msg("failure during tui.Run")
+	dir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	if err := tui2.Run(tui2.WithDir(dir)); err != nil {
 		panic(err)
 	}
 }
