@@ -79,6 +79,16 @@ func runTestProgram(t *testing.T, dir string) *testProgram {
 	return &testProgram{t: t, p: p, out: out, in: inW, errCh: errCh}
 }
 
+// send injects each rune of s as a printable key press, simulating typing into
+// the always-focused filter. Uses Program.Send (thread-safe) rather than the
+// raw input pipe, which avoids depending on terminal input parsing.
+func (tp *testProgram) send(s string) {
+	tp.t.Helper()
+	for _, r := range s {
+		tp.p.Send(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+}
+
 func (tp *testProgram) waitForContent(substrs ...string) {
 	tp.t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
