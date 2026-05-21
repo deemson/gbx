@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func mkRepo(t *testing.T, dir, name string) {
+func mkRepo(t *testing.T, dir, name string) gitest.Repo {
 	t.Helper()
 	p := filepath.Join(dir, name)
 	require.NoError(t, os.Mkdir(p, 0755))
-	gitest.Init(t, p)
+	return gitest.Init(t, p)
 }
 
 func TestEmptyShowsNoRepos(t *testing.T) {
@@ -51,6 +51,30 @@ func TestNonRepoDirsIgnored(t *testing.T) {
 	out := tp.out.String()
 	require.NotContains(t, out, "plain-dir")
 	require.NotContains(t, out, "loose-file")
+}
+
+func TestRepoShowsCleanState(t *testing.T) {
+	dir := t.TempDir()
+	repo := mkRepo(t, dir, "withcommit")
+	repo.SetupCommitConfig()
+	repo.WriteFileAdd("file", "data")
+	repo.Commit("initial")
+	branch := repo.BranchShowCurrent()
+
+	tp := runTestProgram(t, dir)
+	tp.waitForContent("withcommit", branch, "↑0 ↓0", "clean")
+}
+
+func TestRepoShowsChangedCount(t *testing.T) {
+	dir := t.TempDir()
+	repo := mkRepo(t, dir, "dirty")
+	repo.SetupCommitConfig()
+	repo.WriteFileAdd("a", "1")
+	repo.Commit("init")
+	repo.WriteFileAdd("b", "2") // staged, uncommitted
+
+	tp := runTestProgram(t, dir)
+	tp.waitForContent("dirty", "1 changed")
 }
 
 func TestFilterExcludingAllShowsNoMatches(t *testing.T) {

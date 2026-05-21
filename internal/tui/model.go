@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -10,8 +11,9 @@ import (
 )
 
 type repoEntry struct {
-	name string
-	repo git.Repo
+	name   string
+	repo   git.Repo
+	status *repoStatus // nil until loaded
 }
 
 // model is the root TUI model. The filter input is always focused (fzf-style):
@@ -61,7 +63,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 	case repoFoundMsg:
-		return m.addRepo(msg.name, msg.repo), nil
+		return m.addRepo(msg.name, msg.repo), statusCmd(msg.name, msg.repo)
+	case statusLoadedMsg:
+		return m.setStatus(msg.name, msg.status), nil
 	}
 	var cmd tea.Cmd
 	m.filter, cmd = m.filter.Update(msg)
@@ -77,27 +81,54 @@ func (m model) addRepo(name string, repo git.Repo) model {
 	return m
 }
 
+// setStatus attaches a loaded status to the named repo.
+func (m model) setStatus(name string, s repoStatus) model {
+	for i := range m.repos {
+		if m.repos[i].name == name {
+			loaded := s
+			m.repos[i].status = &loaded
+			break
+		}
+	}
+	return m
+}
+
 func (m model) View() tea.View {
 	var b strings.Builder
 	b.WriteString(m.filter.View())
 	b.WriteString("\n\n")
 
-	switch {
-	case len(m.repos) == 0:
+	if len(m.repos) == 0 {
 		b.WriteString("no repos")
-	default:
-		pattern := m.filter.Value()
-		matched := 0
-		for _, r := range m.repos {
-			if fuzzyMatch(pattern, r.name) {
-				b.WriteString(r.name)
-				b.WriteString("\n")
-				matched++
-			}
+		return tea.View{Content: b.String(), AltScreen: true}
+	}
+
+	pattern := m.filter.Value()
+	var matched []repoEntry
+	for _, r := range m.repos {
+		if fuzzyMatch(pattern, r.name) {
+			matched = append(matched, r)
 		}
-		if matched == 0 {
-			b.WriteString("no matches")
+	}
+	if len(matched) == 0 {
+		b.WriteString("no matches")
+		return tea.View{Content: b.String(), AltScreen: true}
+	}
+
+	nameWidth := 0
+	for _, r := range matched {
+		if len(r.name) > nameWidth {
+			nameWidth = len(r.name)
 		}
+	}
+	for _, r := range matched {
+		fmt.Fprintf(&b, "%-*s  ", nameWidth, r.name)
+		if r.status == nil {
+			b.WriteString("...")
+		} else {
+			b.WriteString(r.status.line())
+		}
+		b.WriteString("\n")
 	}
 
 	return tea.View{
