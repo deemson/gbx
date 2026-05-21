@@ -5,7 +5,6 @@ import (
 	"path"
 	"time"
 
-	"github.com/deemson/gbx/internal/tui2"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -22,11 +21,5 @@ func main() {
 	}
 	log.Logger = zerolog.New(logFile).With().Timestamp().Logger()
 	zerolog.DefaultContextLogger = &log.Logger
-	dir, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	if err := tui2.Run(tui2.WithDir(dir)); err != nil {
-		panic(err)
-	}
+	// tui is supposed to be run here
 }
