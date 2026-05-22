@@ -15,7 +15,7 @@ type repoEntry struct {
 	repo   git.Repo
 	status *repoStatus // nil until loaded
 	cmd    cmdState
-	cmdErr error // last command error, surfaced via drill-in (slice 5)
+	cmdErr error // last command error, surfaced via drill-in
 }
 
 // uiMode is which screen has key focus. In modeList the filter is focused and

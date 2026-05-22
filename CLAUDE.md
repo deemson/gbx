@@ -1,9 +1,20 @@
 # gbx
 
-A TUI for viewing and operating on many git repositories at once.
-**Read `DECISIONS.md`** for the product/architecture decisions and the slice
-roadmap; `docs/adr/` holds the longer-form record per decision, and `KEYMAP.md`
-documents the bindings (mirrored from `keyBindings` in `internal/tui/help.go`).
+A TUI to view the state of many git repositories at once **and** run a fixed set
+of git commands across them.
+
+## Scope
+
+- **Fixed, typed command set** — not arbitrary passthrough. Each command is a
+  typed method on the `internal/git` wrapper, so its output is structured and
+  testable. v1 commands: `pull`, `checkout`.
+- **Discovery:** scan the *immediate* subdirectories of one root dir (CLI arg,
+  default cwd); each that is a git repo becomes a row. No recursion, no config
+  file.
+- A command acts on **the repos currently matching the filter** — no marking /
+  multi-select, and **no confirmation step**. Clearing the filter targets all.
+- **Out of scope:** arbitrary command passthrough; `commit` / `push` / branch
+  creation (`-b`); config-file repo lists; recursive discovery.
 
 ## Layout
 
@@ -24,7 +35,9 @@ documents the bindings (mirrored from `keyBindings` in `internal/tui/help.go`).
   method on `Repo`, with errors mapped by **attempt-and-read** (inspect exit code
   + stderr → typed error), as in `open.go` / `diff_numstat.go`.
 - **The TUI is fzf-style:** a filter input is always focused. Printable keys
-  filter; every action is a non-printable binding.
+  filter; every action is a non-printable binding. The `ctrl+g` help overlay
+  renders from `keyBindings` in `internal/tui/help.go` — that slice is the single
+  source of truth for the bindings.
 - **Test the TUI end-to-end** with the `testProgram` harness (`internal/tui`,
   `testhelper_test.go`): it drives a real `tea.Program`, inject keys with
   `send`/`sendKey`, assert rendered output with `waitForContent`. Build fixtures
@@ -40,10 +53,9 @@ documents the bindings (mirrored from `keyBindings` in `internal/tui/help.go`).
 
 - `go build` → `./gbx`; run `./gbx [root-dir]` (default: cwd).
 - `go test ./...`
-- The `just simulate` recipe is dead — ignore it.
 
 ## Workflow
 
-- Build in thin vertical slices (see `DECISIONS.md` roadmap); each slice is
-  coded + tested, then committed before the next.
-- Run `code-review` / `security-review` on request.
+- Code + test each change, then commit before the next.
+- Mutating commands (`pull` / `checkout`) can lose work — run `code-review` /
+  `security-review` on request.

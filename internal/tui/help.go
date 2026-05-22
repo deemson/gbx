@@ -6,7 +6,7 @@ import (
 )
 
 // keyBinding is one row of the help overlay. This slice is the source of truth
-// for the bindings; KEYMAP.md mirrors it.
+// for the bindings.
 type keyBinding struct {
 	keys string
 	desc string
