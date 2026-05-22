@@ -16,6 +16,8 @@ var (
 	ctrlO    = tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
 	keyEnter = tea.KeyPressMsg{Code: tea.KeyEnter}
 	keyEsc   = tea.KeyPressMsg{Code: tea.KeyEscape}
+	keyUp    = tea.KeyPressMsg{Code: tea.KeyUp}
+	keyDown  = tea.KeyPressMsg{Code: tea.KeyDown}
 )
 
 func mkRepo(t *testing.T, dir, name string) gitest.Repo {
@@ -167,6 +169,38 @@ func TestCheckoutUnknownBranchShowsCross(t *testing.T) {
 	tp.send("nope-not-real")
 	tp.sendKey(keyEnter)
 	tp.waitForContent("✗")
+}
+
+func TestDrillInShowsDiff(t *testing.T) {
+	dir := t.TempDir()
+	repo := mkRepo(t, dir, "proj")
+	repo.SetupCommitConfig()
+	repo.WriteFileAdd("a.txt", "1\n2\n3\n")
+	repo.Commit("c1")
+	repo.WriteFile("a.txt", "1\n2\nchanged\n4\n") // modify the tracked file
+
+	tp := runTestProgram(t, dir)
+	tp.waitForContent("proj", "1 changed")
+
+	tp.sendKey(keyEnter) // cursor on the only repo → drill in
+	tp.waitForContent("changes vs HEAD", "a.txt")
+}
+
+func TestDrillInShowsLastCommandError(t *testing.T) {
+	dir := t.TempDir()
+	repo := mkRepo(t, dir, "proj")
+	repo.SetupCommitConfig()
+	repo.WriteFileAdd("f", "x")
+	repo.Commit("c1")
+
+	tp := runTestProgram(t, dir)
+	tp.waitForContent("proj")
+
+	tp.sendKey(ctrlP) // pull fails (no upstream)
+	tp.waitForContent("✗")
+
+	tp.sendKey(keyEnter) // drill into the failed repo
+	tp.waitForContent("last command error")
 }
 
 func TestFilterExcludingAllShowsNoMatches(t *testing.T) {

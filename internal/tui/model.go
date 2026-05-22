@@ -18,18 +18,30 @@ type repoEntry struct {
 	cmdErr error // last command error, surfaced via drill-in (slice 5)
 }
 
+// uiMode is which screen has key focus. In modeList the filter is focused and
+// printable keys filter; the other modes capture keys for their own use.
+type uiMode int
+
+const (
+	modeList uiMode = iota
+	modeBranchPrompt
+	modeDetail
+)
+
 // model is the root TUI model. The filter input is always focused (fzf-style):
 // printable keys edit the filter, and every action is a non-printable binding.
 type model struct {
 	dir    string
 	filter textinput.Model
 	// branch is the transient checkout prompt, shown and given key focus only
-	// while branchActive. The filter is blurred for its duration.
-	branch       textinput.Model
-	branchActive bool
-	repos        []repoEntry
-	width        int
-	height       int
+	// in modeBranchPrompt. The filter is blurred for its duration.
+	branch textinput.Model
+	repos  []repoEntry
+	cursor int        // index into the filtered list; the drill-in target
+	mode   uiMode     // which screen owns key input
+	detail detailView // populated while mode == modeDetail
+	width  int
+	height int
 }
 
 func newModel(dir string) model {
@@ -61,12 +73,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 	case tea.KeyPressMsg:
-		if m.branchActive {
+		switch m.mode {
+		case modeBranchPrompt:
 			return m.updateBranchPrompt(msg)
+		case modeDetail:
+			return m.updateDetail(msg)
 		}
 		switch msg.String() {
 		case "esc", "ctrl+c":
 			return m, tea.Quit
+		case "up", "ctrl+k":
+			m.cursor--
+			return m.clampCursor(), nil
+		case "down", "ctrl+j":
+			m.cursor++
+			return m.clampCursor(), nil
+		case "enter":
+			return m.openDetail()
 		case "ctrl+p":
 			return m.runOnFiltered(pullCmd)
 		case "ctrl+o":
@@ -89,9 +112,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, statusCmd(msg.name, repo) // auto-refresh after the command
 		}
 		return m, nil
+	case detailLoadedMsg:
+		if m.mode == modeDetail && m.detail.name == msg.name {
+			m.detail.diff = msg.diff
+			m.detail.err = msg.err
+			m.detail.loaded = true
+		}
+		return m, nil
 	}
 	var cmd tea.Cmd
 	m.filter, cmd = m.filter.Update(msg)
+	m = m.clampCursor() // the filter may have changed which rows match
 	return m, cmd
 }
 
@@ -116,7 +147,7 @@ func (m model) runOnFiltered(cmdFor func(name string, repo git.Repo) tea.Cmd) (m
 // input edits the prompt (enter switches the filtered repos, esc cancels)
 // rather than the filter.
 func (m model) openBranchPrompt() (model, tea.Cmd) {
-	m.branchActive = true
+	m.mode = modeBranchPrompt
 	m.branch.Reset()
 	m.filter.Blur()
 	return m, m.branch.Focus()
@@ -145,9 +176,57 @@ func (m model) updateBranchPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
 
 // closeBranchPrompt dismisses the checkout prompt and returns focus to the filter.
 func (m model) closeBranchPrompt() (model, tea.Cmd) {
-	m.branchActive = false
+	m.mode = modeList
 	m.branch.Blur()
 	return m, m.filter.Focus()
+}
+
+// matched returns the repos currently passing the filter, in display order.
+func (m model) matched() []repoEntry {
+	pattern := m.filter.Value()
+	var out []repoEntry
+	for _, r := range m.repos {
+		if fuzzyMatch(pattern, r.name) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// clampCursor keeps the cursor within the filtered list as it grows or shrinks.
+func (m model) clampCursor() model {
+	switch n := len(m.matched()); {
+	case n == 0, m.cursor < 0:
+		m.cursor = 0
+	case m.cursor >= n:
+		m.cursor = n - 1
+	}
+	return m
+}
+
+// openDetail drills into the repo under the cursor, loading its diff vs HEAD.
+func (m model) openDetail() (model, tea.Cmd) {
+	m = m.clampCursor()
+	matched := m.matched()
+	if len(matched) == 0 {
+		return m, nil
+	}
+	sel := matched[m.cursor]
+	m.mode = modeDetail
+	m.detail = detailView{name: sel.name, cmdErr: sel.cmdErr}
+	return m, detailCmd(sel.name, sel.repo)
+}
+
+// updateDetail routes a key while the drill-in is open. Esc returns to the list.
+func (m model) updateDetail(msg tea.KeyPressMsg) (model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		m.mode = modeList
+		return m, nil
+	}
+	return m, nil
 }
 
 // addRepo inserts a discovered repo and keeps the list sorted by name.
@@ -197,10 +276,14 @@ func (m model) repoByName(name string) (git.Repo, bool) {
 }
 
 func (m model) View() tea.View {
+	if m.mode == modeDetail {
+		return tea.View{Content: m.detailContent(), AltScreen: true}
+	}
+
 	var b strings.Builder
 	b.WriteString(m.filter.View())
 	b.WriteString("\n")
-	if m.branchActive {
+	if m.mode == modeBranchPrompt {
 		b.WriteString(m.branch.View())
 		b.WriteString("\n")
 	}
@@ -211,13 +294,7 @@ func (m model) View() tea.View {
 		return tea.View{Content: b.String(), AltScreen: true}
 	}
 
-	pattern := m.filter.Value()
-	var matched []repoEntry
-	for _, r := range m.repos {
-		if fuzzyMatch(pattern, r.name) {
-			matched = append(matched, r)
-		}
-	}
+	matched := m.matched()
 	if len(matched) == 0 {
 		b.WriteString("no matches")
 		return tea.View{Content: b.String(), AltScreen: true}
@@ -229,7 +306,12 @@ func (m model) View() tea.View {
 			nameWidth = len(r.name)
 		}
 	}
-	for _, r := range matched {
+	for i, r := range matched {
+		marker := "  "
+		if i == m.cursor {
+			marker = "▸ "
+		}
+		b.WriteString(marker)
 		fmt.Fprintf(&b, "%-*s  ", nameWidth, r.name)
 		if r.status == nil {
 			b.WriteString("...")
@@ -247,4 +329,32 @@ func (m model) View() tea.View {
 		Content:   b.String(),
 		AltScreen: true,
 	}
+}
+
+// detailContent renders the drill-in screen for m.detail.
+func (m model) detailContent() string {
+	d := m.detail
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n\n", d.name)
+
+	b.WriteString("changes vs HEAD:\n")
+	switch {
+	case !d.loaded:
+		b.WriteString("  ...\n")
+	case d.err != nil:
+		fmt.Fprintf(&b, "  (error: %s)\n", d.err)
+	case len(d.diff.Paths) == 0:
+		b.WriteString("  none\n")
+	default:
+		for _, p := range d.diff.Paths {
+			fmt.Fprintf(&b, "  +%d -%d  %s\n", p.AddedLines, p.DeletedLines, p.Path)
+		}
+	}
+
+	if d.cmdErr != nil {
+		fmt.Fprintf(&b, "\nlast command error:\n  %s\n", d.cmdErr)
+	}
+
+	b.WriteString("\nesc: back\n")
+	return b.String()
 }

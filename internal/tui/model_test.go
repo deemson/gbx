@@ -37,10 +37,10 @@ func TestCheckoutPromptOpensAndEscCancels(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
 	opened, _ := m.Update(ctrlO)
-	require.True(t, opened.(model).branchActive)
+	require.Equal(t, modeBranchPrompt, opened.(model).mode)
 
 	cancelled, _ := opened.(model).Update(keyEsc)
-	require.False(t, cancelled.(model).branchActive)
+	require.Equal(t, modeList, cancelled.(model).mode)
 }
 
 func TestCheckoutSubmitMarksFilteredRunning(t *testing.T) {
@@ -55,7 +55,7 @@ func TestCheckoutSubmitMarksFilteredRunning(t *testing.T) {
 	updated, cmd := m.Update(keyEnter)
 	m = updated.(model)
 
-	require.False(t, m.branchActive)             // prompt closes on submit
+	require.Equal(t, modeList, m.mode)           // prompt closes on submit
 	require.Equal(t, cmdRunning, m.repos[0].cmd) // filtered repo marked running
 	require.NotNil(t, cmd)
 }
@@ -67,6 +67,68 @@ func TestCheckoutSubmitEmptyIsNoop(t *testing.T) {
 	updated, _ = updated.(model).Update(keyEnter) // submit with empty branch
 	m = updated.(model)
 
-	require.False(t, m.branchActive)
+	require.Equal(t, modeList, m.mode)
 	require.Equal(t, cmdNone, m.repos[0].cmd) // nothing run
+}
+
+func TestCursorMovesAndClamps(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{}).addRepo("b", git.Repo{}).addRepo("c", git.Repo{})
+	require.Equal(t, 0, m.cursor)
+
+	for i := 0; i < 5; i++ { // more downs than rows
+		updated, _ := m.Update(keyDown)
+		m = updated.(model)
+	}
+	require.Equal(t, 2, m.cursor) // clamped to last row
+
+	for i := 0; i < 5; i++ {
+		updated, _ := m.Update(keyUp)
+		m = updated.(model)
+	}
+	require.Equal(t, 0, m.cursor) // clamped to first row
+}
+
+func TestEnterOpensDetailForCursorRepo(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{}).addRepo("b", git.Repo{})
+
+	updated, _ := m.Update(keyDown) // move cursor to "b"
+	m = updated.(model)
+	updated, cmd := m.Update(keyEnter)
+	m = updated.(model)
+
+	require.Equal(t, modeDetail, m.mode)
+	require.Equal(t, "b", m.detail.name)
+	require.NotNil(t, cmd) // diff load scheduled
+}
+
+func TestDetailEscReturnsToList(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+
+	updated, _ := m.Update(keyEnter)
+	require.Equal(t, modeDetail, updated.(model).mode)
+
+	updated, _ = updated.(model).Update(keyEsc)
+	require.Equal(t, modeList, updated.(model).mode)
+}
+
+func TestDetailCarriesLastCommandError(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+	m = m.setCmdResult("a", errors.New("pull boom"))
+
+	updated, _ := m.Update(keyEnter)
+	require.Error(t, updated.(model).detail.cmdErr)
+}
+
+func TestDetailLoadedPopulatesDiff(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+
+	updated, _ := m.Update(keyEnter)
+	m = updated.(model)
+
+	diff := git.DiffNumStat{Paths: []git.PathDiffNumStat{{Path: "f.go", AddedLines: 3, DeletedLines: 1}}}
+	updated, _ = m.Update(detailLoadedMsg{name: "a", diff: diff})
+	m = updated.(model)
+
+	require.True(t, m.detail.loaded)
+	require.Len(t, m.detail.diff.Paths, 1)
 }
