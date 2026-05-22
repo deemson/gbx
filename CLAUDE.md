@@ -24,8 +24,13 @@ A TUI for viewing and operating on many git repositories at once.
 - **The TUI is fzf-style:** a filter input is always focused. Printable keys
   filter; every action is a non-printable binding.
 - **Test the TUI end-to-end** with the `testProgram` harness (`internal/tui`,
-  `testhelper_test.go`): it drives a real `tea.Program` over piped I/O; assert
-  rendered output with `waitForContent`. Build fixtures with `gitest`.
+  `testhelper_test.go`): it drives a real `tea.Program`, inject keys with
+  `send`/`sendKey`, assert rendered output with `waitForContent`. Build fixtures
+  with `gitest`. **Caveat:** the alt-screen renderer does differential,
+  cursor-positioned updates, so `waitForContent` only reliably sees *fresh/
+  appended* text — an in-place change (e.g. `↓1`→`↓0`) is not a contiguous
+  substring. Assert state *transitions* with renderer-free model-level tests
+  (drive `model.Update` directly, inspect state), as in `model_test.go`.
 - **Logging:** zerolog → `~/gbx.log` (the TUI owns stdout). Tests discard logs
   (see `TestMain`).
 

@@ -79,6 +79,12 @@ func runTestProgram(t *testing.T, dir string) *testProgram {
 	return &testProgram{t: t, p: p, out: out, in: inW, errCh: errCh}
 }
 
+// sendKey injects a single key press (e.g. a ctrl+ binding).
+func (tp *testProgram) sendKey(k tea.KeyPressMsg) {
+	tp.t.Helper()
+	tp.p.Send(k)
+}
+
 // send injects each rune of s as a printable key press, simulating typing into
 // the always-focused filter. Uses Program.Send (thread-safe) rather than the
 // raw input pipe, which avoids depending on terminal input parsing.

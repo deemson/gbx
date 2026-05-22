@@ -48,6 +48,14 @@ func (r Repo) Status(ctx context.Context) (Status, error) {
 	return parseStatus(res.Stdout)
 }
 
+func (r Repo) Pull(ctx context.Context) error {
+	res, err := r.runGit(ctx, "pull")
+	if err != nil {
+		return NewUnknownRunErr(res, err)
+	}
+	return nil
+}
+
 func (r Repo) DiffNumStatHead(ctx context.Context) (DiffNumStat, error) {
 	res, err := r.runGit(ctx, "diff", "HEAD", "-z", "--numstat")
 	if err != nil {

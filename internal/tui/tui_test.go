@@ -6,9 +6,12 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/deemson/gbx/internal/git/gitest"
 	"github.com/stretchr/testify/require"
 )
+
+var ctrlP = tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl}
 
 func mkRepo(t *testing.T, dir, name string) gitest.Repo {
 	t.Helper()
@@ -75,6 +78,52 @@ func TestRepoShowsChangedCount(t *testing.T) {
 
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("dirty", "1 changed")
+}
+
+func TestPullSuccessShowsCheck(t *testing.T) {
+	dir := t.TempDir()
+
+	remoteDir := t.TempDir()
+	gitest.InitBare(t, remoteDir)
+
+	producer := gitest.Init(t, t.TempDir())
+	producer.RemoteAdd("origin", remoteDir)
+	producer.SetupCommitConfig()
+	producer.WriteFileAdd("file", "v1\n")
+	producer.Commit("c1")
+	producer.PushSetUpstream("origin", producer.BranchShowCurrent())
+
+	// consumer lives inside the scanned dir, starts at c1, tracks origin.
+	consumer := gitest.Clone(t, remoteDir, filepath.Join(dir, "consumer"))
+
+	// producer advances the remote; consumer fetches → it now has something to pull.
+	producer.WriteFileAdd("file", "v1\nv2\n")
+	producer.Commit("c2")
+	producer.Push()
+	consumer.Fetch()
+
+	tp := runTestProgram(t, dir)
+	tp.waitForContent("consumer", "↓1")
+
+	// ctrl+p pulls the filtered repo; success renders a fresh ✓ glyph.
+	// (The behind→0 status change is an in-place cursor update the raw stream
+	// doesn't show contiguously, so the refresh is asserted at model level.)
+	tp.sendKey(ctrlP)
+	tp.waitForContent("✓")
+}
+
+func TestPullFailureShowsCross(t *testing.T) {
+	dir := t.TempDir()
+	repo := mkRepo(t, dir, "lonely")
+	repo.SetupCommitConfig()
+	repo.WriteFileAdd("f", "x")
+	repo.Commit("c1")
+
+	tp := runTestProgram(t, dir)
+	tp.waitForContent("lonely")
+
+	tp.sendKey(ctrlP)
+	tp.waitForContent("✗")
 }
 
 func TestFilterExcludingAllShowsNoMatches(t *testing.T) {
