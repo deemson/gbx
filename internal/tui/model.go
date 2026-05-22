@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/deemson/gbx/internal/git"
 )
 
@@ -49,6 +50,10 @@ func newModel(dir string) model {
 	filter := textinput.New()
 	filter.Prompt = "> "
 	filter.Placeholder = "filter repos"
+	// A non-zero width is required up front: textinput truncates the placeholder
+	// to Width()+1 runes, so Width()==0 renders only its first letter. Resized to
+	// the terminal on the first WindowSizeMsg.
+	filter.SetWidth(40)
 	// Focus here, in the constructor, so the focused state persists into the
 	// model the program runs. Calling Focus() in Init() would not, because
 	// Init() returns only a Cmd, discarding the mutated model.
@@ -56,6 +61,7 @@ func newModel(dir string) model {
 	branch := textinput.New()
 	branch.Prompt = "branch: "
 	branch.Placeholder = "switch to branch"
+	branch.SetWidth(40)
 	return model{
 		dir:    dir,
 		filter: filter,
@@ -72,6 +78,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.filter.SetWidth(msg.Width - lipgloss.Width(m.filter.Prompt))
+		m.branch.SetWidth(msg.Width - lipgloss.Width(m.branch.Prompt))
 		return m, nil
 	case tea.KeyPressMsg:
 		switch m.mode {
@@ -312,55 +320,53 @@ func (m model) View() tea.View {
 		return tea.View{Content: helpContent(), AltScreen: true}
 	}
 
-	var b strings.Builder
-	b.WriteString(m.filter.View())
-	b.WriteString("\n")
+	sections := []string{m.filter.View()}
 	if m.mode == modeBranchPrompt {
-		b.WriteString(m.branch.View())
-		b.WriteString("\n")
+		sections = append(sections, m.branch.View())
 	}
-	b.WriteString("\n")
+	sections = append(sections, "", m.listContent())
 
+	return tea.View{
+		Content:   lipgloss.JoinVertical(lipgloss.Left, sections...),
+		AltScreen: true,
+	}
+}
+
+// listContent renders the repo rows (or an empty-state line) as a single block.
+func (m model) listContent() string {
 	if len(m.repos) == 0 {
-		b.WriteString("no repos")
-		return tea.View{Content: b.String(), AltScreen: true}
+		return "no repos"
 	}
-
 	matched := m.matched()
 	if len(matched) == 0 {
-		b.WriteString("no matches")
-		return tea.View{Content: b.String(), AltScreen: true}
+		return "no matches"
 	}
 
 	nameWidth := 0
 	for _, r := range matched {
-		if len(r.name) > nameWidth {
-			nameWidth = len(r.name)
+		if w := lipgloss.Width(r.name); w > nameWidth {
+			nameWidth = w
 		}
 	}
+	nameCol := lipgloss.NewStyle().Width(nameWidth)
+
+	rows := make([]string, len(matched))
 	for i, r := range matched {
 		marker := "  "
 		if i == m.cursor {
 			marker = "▸ "
 		}
-		b.WriteString(marker)
-		fmt.Fprintf(&b, "%-*s  ", nameWidth, r.name)
-		if r.status == nil {
-			b.WriteString("...")
-		} else {
-			b.WriteString(r.status.line())
+		status := "..."
+		if r.status != nil {
+			status = r.status.line()
 		}
+		cols := []string{marker, nameCol.Render(r.name), "  ", status}
 		if g := r.cmd.glyph(); g != "" {
-			b.WriteString("  ")
-			b.WriteString(g)
+			cols = append(cols, "  ", g)
 		}
-		b.WriteString("\n")
+		rows[i] = lipgloss.JoinHorizontal(lipgloss.Top, cols...)
 	}
-
-	return tea.View{
-		Content:   b.String(),
-		AltScreen: true,
-	}
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
 // detailContent renders the drill-in screen for m.detail.
