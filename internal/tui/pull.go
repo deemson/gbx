@@ -8,11 +8,6 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-type pullDoneMsg struct {
-	name string
-	err  error
-}
-
 // pullCmd runs `git pull` on one repo off the UI goroutine.
 func pullCmd(name string, repo git.Repo) tea.Cmd {
 	return func() tea.Msg {
@@ -20,6 +15,6 @@ func pullCmd(name string, repo git.Repo) tea.Cmd {
 		if err != nil {
 			log.Error().Err(err).Str("name", name).Msg("pull failed")
 		}
-		return pullDoneMsg{name: name, err: err}
+		return cmdDoneMsg{name: name, err: err}
 	}
 }

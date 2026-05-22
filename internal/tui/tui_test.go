@@ -11,7 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var ctrlP = tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl}
+var (
+	ctrlP    = tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl}
+	ctrlO    = tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
+	keyEnter = tea.KeyPressMsg{Code: tea.KeyEnter}
+	keyEsc   = tea.KeyPressMsg{Code: tea.KeyEscape}
+)
 
 func mkRepo(t *testing.T, dir, name string) gitest.Repo {
 	t.Helper()
@@ -123,6 +128,44 @@ func TestPullFailureShowsCross(t *testing.T) {
 	tp.waitForContent("lonely")
 
 	tp.sendKey(ctrlP)
+	tp.waitForContent("✗")
+}
+
+func TestCheckoutSuccessShowsCheck(t *testing.T) {
+	dir := t.TempDir()
+	repo := mkRepo(t, dir, "proj")
+	repo.SetupCommitConfig()
+	repo.WriteFileAdd("f", "x")
+	repo.Commit("c1")
+	start := repo.BranchShowCurrent()
+	repo.CheckoutBranch("feature")
+	repo.Checkout(start) // leave "feature" existing but not current
+
+	tp := runTestProgram(t, dir)
+	tp.waitForContent("proj")
+
+	// ctrl+o opens the transient branch prompt; typing routes to it, not the filter.
+	tp.sendKey(ctrlO)
+	tp.waitForContent("branch:")
+	tp.send("feature")
+	tp.sendKey(keyEnter)
+	tp.waitForContent("✓")
+}
+
+func TestCheckoutUnknownBranchShowsCross(t *testing.T) {
+	dir := t.TempDir()
+	repo := mkRepo(t, dir, "proj")
+	repo.SetupCommitConfig()
+	repo.WriteFileAdd("f", "x")
+	repo.Commit("c1")
+
+	tp := runTestProgram(t, dir)
+	tp.waitForContent("proj")
+
+	tp.sendKey(ctrlO)
+	tp.waitForContent("branch:")
+	tp.send("nope-not-real")
+	tp.sendKey(keyEnter)
 	tp.waitForContent("✗")
 }
 

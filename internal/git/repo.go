@@ -56,6 +56,17 @@ func (r Repo) Pull(ctx context.Context) error {
 	return nil
 }
 
+// Switch runs `git switch <branch>` (the "checkout" command in product terms).
+// Guessing is left on (the default), so a branch that exists only as a
+// same-named remote-tracking branch is created locally and set to track it.
+func (r Repo) Switch(ctx context.Context, branch string) error {
+	res, err := r.runGit(ctx, "switch", branch)
+	if err != nil {
+		return NewUnknownRunErr(res, err)
+	}
+	return nil
+}
+
 func (r Repo) DiffNumStatHead(ctx context.Context) (DiffNumStat, error) {
 	res, err := r.runGit(ctx, "diff", "HEAD", "-z", "--numstat")
 	if err != nil {
