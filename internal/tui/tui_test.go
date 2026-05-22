@@ -18,6 +18,8 @@ var (
 	keyEsc   = tea.KeyPressMsg{Code: tea.KeyEscape}
 	keyUp    = tea.KeyPressMsg{Code: tea.KeyUp}
 	keyDown  = tea.KeyPressMsg{Code: tea.KeyDown}
+	ctrlR    = tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl}
+	ctrlG    = tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl}
 )
 
 func mkRepo(t *testing.T, dir, name string) gitest.Repo {
@@ -201,6 +203,32 @@ func TestDrillInShowsLastCommandError(t *testing.T) {
 
 	tp.sendKey(keyEnter) // drill into the failed repo
 	tp.waitForContent("last command error")
+}
+
+func TestHelpOverlayShowsBindings(t *testing.T) {
+	dir := t.TempDir()
+	mkRepo(t, dir, "proj")
+
+	tp := runTestProgram(t, dir)
+	tp.waitForContent("proj")
+
+	tp.sendKey(ctrlG)
+	tp.waitForContent("gbx — keys", "ctrl+p", "ctrl+o", "ctrl+r")
+}
+
+func TestRefreshPicksUpExternalChange(t *testing.T) {
+	dir := t.TempDir()
+	repo := mkRepo(t, dir, "proj")
+	repo.SetupCommitConfig()
+	repo.WriteFileAdd("a", "1")
+	repo.Commit("c1")
+
+	tp := runTestProgram(t, dir)
+	tp.waitForContent("proj", "clean")
+
+	repo.WriteFileAdd("b", "2") // change made after the initial status load
+	tp.sendKey(ctrlR)
+	tp.waitForContent("1 changed")
 }
 
 func TestFilterExcludingAllShowsNoMatches(t *testing.T) {

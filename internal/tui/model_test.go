@@ -132,3 +132,36 @@ func TestDetailLoadedPopulatesDiff(t *testing.T) {
 	require.True(t, m.detail.loaded)
 	require.Len(t, m.detail.diff.Paths, 1)
 }
+
+func TestHelpTogglesOpenAndClosed(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+
+	opened, _ := m.Update(ctrlG)
+	require.Equal(t, modeHelp, opened.(model).mode)
+
+	closedByEsc, _ := opened.(model).Update(keyEsc)
+	require.Equal(t, modeList, closedByEsc.(model).mode)
+
+	closedByCtrlG, _ := opened.(model).Update(ctrlG)
+	require.Equal(t, modeList, closedByCtrlG.(model).mode)
+}
+
+func TestRefreshTargetsFilteredOnly(t *testing.T) {
+	m := newModel("x").addRepo("alpha", git.Repo{}).addRepo("beta", git.Repo{})
+
+	// A filter that matches at least one repo schedules refresh commands.
+	for _, r := range "alpha" {
+		updated, _ := m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+		m = updated.(model)
+	}
+	_, cmd := m.Update(ctrlR)
+	require.NotNil(t, cmd)
+
+	// A filter that matches nothing schedules no work (empty batch is nil).
+	for _, r := range "zzz" {
+		updated, _ := m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+		m = updated.(model)
+	}
+	_, cmd = m.Update(ctrlR)
+	require.Nil(t, cmd)
+}

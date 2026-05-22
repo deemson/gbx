@@ -26,6 +26,7 @@ const (
 	modeList uiMode = iota
 	modeBranchPrompt
 	modeDetail
+	modeHelp
 )
 
 // model is the root TUI model. The filter input is always focused (fzf-style):
@@ -78,6 +79,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateBranchPrompt(msg)
 		case modeDetail:
 			return m.updateDetail(msg)
+		case modeHelp:
+			return m.updateHelp(msg)
 		}
 		switch msg.String() {
 		case "esc", "ctrl+c":
@@ -94,6 +97,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.runOnFiltered(pullCmd)
 		case "ctrl+o":
 			return m.openBranchPrompt()
+		case "ctrl+r":
+			return m.refreshFiltered()
+		case "ctrl+g":
+			m.mode = modeHelp
+			return m, nil
 		}
 		// Any other key belongs to the always-focused filter (handled below).
 	case entriesLoadedMsg:
@@ -229,6 +237,27 @@ func (m model) updateDetail(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	return m, nil
 }
 
+// refreshFiltered re-fetches git status for every repo matching the filter.
+func (m model) refreshFiltered() (model, tea.Cmd) {
+	var cmds []tea.Cmd
+	for _, r := range m.matched() {
+		cmds = append(cmds, statusCmd(r.name, r.repo))
+	}
+	return m, tea.Batch(cmds...)
+}
+
+// updateHelp routes a key while the help overlay is open. Esc or ctrl+g closes it.
+func (m model) updateHelp(msg tea.KeyPressMsg) (model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc", "ctrl+g":
+		m.mode = modeList
+		return m, nil
+	}
+	return m, nil
+}
+
 // addRepo inserts a discovered repo and keeps the list sorted by name.
 func (m model) addRepo(name string, repo git.Repo) model {
 	m.repos = append(m.repos, repoEntry{name: name, repo: repo})
@@ -278,6 +307,9 @@ func (m model) repoByName(name string) (git.Repo, bool) {
 func (m model) View() tea.View {
 	if m.mode == modeDetail {
 		return tea.View{Content: m.detailContent(), AltScreen: true}
+	}
+	if m.mode == modeHelp {
+		return tea.View{Content: helpContent(), AltScreen: true}
 	}
 
 	var b strings.Builder
