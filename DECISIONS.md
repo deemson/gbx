@@ -2,6 +2,9 @@
 
 The pinned decisions for gbx. Read this before building; update it when a decision changes.
 
+Each decision below has a longer-form record (context + consequences) under
+[`docs/adr/`](docs/adr/README.md). The user-facing keymap is [`KEYMAP.md`](KEYMAP.md).
+
 ## What gbx is
 
 A TUI to view the state of many git repositories at once **and** run a fixed set

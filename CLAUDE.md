@@ -1,7 +1,9 @@
 # gbx
 
 A TUI for viewing and operating on many git repositories at once.
-**Read `DECISIONS.md`** for the product/architecture decisions and the slice roadmap.
+**Read `DECISIONS.md`** for the product/architecture decisions and the slice
+roadmap; `docs/adr/` holds the longer-form record per decision, and `KEYMAP.md`
+documents the bindings (mirrored from `keyBindings` in `internal/tui/help.go`).
 
 ## Layout
 
