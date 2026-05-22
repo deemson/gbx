@@ -6,6 +6,7 @@ require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.5
 	charm.land/lipgloss/v2 v2.0.3
+	github.com/mattn/go-shellwords v1.0.13
 	github.com/rs/zerolog v1.35.1
 	github.com/sahilm/fuzzy v0.1.2
 	github.com/stretchr/testify v1.11.1

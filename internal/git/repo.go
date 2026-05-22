@@ -48,23 +48,12 @@ func (r Repo) Status(ctx context.Context) (Status, error) {
 	return parseStatus(res.Stdout)
 }
 
-func (r Repo) Pull(ctx context.Context) error {
-	res, err := r.runGit(ctx, "pull")
-	if err != nil {
-		return NewUnknownRunErr(res, err)
-	}
-	return nil
-}
-
-// Switch runs `git switch <branch>` (the "checkout" command in product terms).
-// Guessing is left on (the default), so a branch that exists only as a
-// same-named remote-tracking branch is created locally and set to track it.
-func (r Repo) Switch(ctx context.Context, branch string) error {
-	res, err := r.runGit(ctx, "switch", branch)
-	if err != nil {
-		return NewUnknownRunErr(res, err)
-	}
-	return nil
+// Run executes an arbitrary git invocation against the repo and returns the raw
+// result. Unlike the typed methods, output is not parsed: callers inspect the
+// exit code and stdout/stderr themselves. err is non-nil iff git exited
+// non-zero (or failed to start).
+func (r Repo) Run(ctx context.Context, args ...string) (exec.Result, error) {
+	return r.runGit(ctx, args...)
 }
 
 func (r Repo) DiffNumStatHead(ctx context.Context) (DiffNumStat, error) {

@@ -20,51 +20,54 @@ func TestCmdDoneMarksOKAndSchedulesRefresh(t *testing.T) {
 	um := updated.(model)
 
 	require.Equal(t, cmdOK, um.repos[0].cmd)
-	require.NotNil(t, cmd) // status auto-refresh scheduled after the command
+	require.NotNil(t, cmd) // status + diff auto-refresh scheduled after the command
 }
 
-func TestCmdDoneMarksFailedAndStoresErr(t *testing.T) {
+func TestCmdDoneMarksFailed(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
 	updated, _ := m.Update(cmdDoneMsg{name: "r", err: errors.New("boom")})
 	um := updated.(model)
 
 	require.Equal(t, cmdFailed, um.repos[0].cmd)
-	require.Error(t, um.repos[0].cmdErr) // preserved for drill-in
 }
 
-func TestCheckoutPromptOpensAndEscCancels(t *testing.T) {
+func TestCommandModeTogglesWithTabAndEsc(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
-	opened, _ := m.Update(ctrlO)
-	require.Equal(t, modeBranchPrompt, opened.(model).mode)
+	opened, _ := m.Update(keyTab)
+	require.Equal(t, modeCommand, opened.(model).mode)
 
-	cancelled, _ := opened.(model).Update(keyEsc)
-	require.Equal(t, modeList, cancelled.(model).mode)
+	byTab, _ := opened.(model).Update(keyTab)
+	require.Equal(t, modeList, byTab.(model).mode)
+
+	reopened, _ := m.Update(keyTab)
+	byEsc, _ := reopened.(model).Update(keyEsc)
+	require.Equal(t, modeList, byEsc.(model).mode)
 }
 
-func TestCheckoutSubmitMarksFilteredRunning(t *testing.T) {
+func TestCommandSubmitMarksFilteredRunning(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
-	updated, _ := m.Update(ctrlO)
+	updated, _ := m.Update(keyTab)
 	m = updated.(model)
-	for _, r := range "main" { // routed to the prompt, not the filter
+	for _, r := range "pull" { // routed to the command input, not the filter
 		updated, _ = m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
 		m = updated.(model)
 	}
 	updated, cmd := m.Update(keyEnter)
 	m = updated.(model)
 
-	require.Equal(t, modeList, m.mode)           // prompt closes on submit
+	require.Equal(t, modeList, m.mode)           // command mode closes on submit
 	require.Equal(t, cmdRunning, m.repos[0].cmd) // filtered repo marked running
 	require.NotNil(t, cmd)
 }
 
-func TestCheckoutSubmitEmptyIsNoop(t *testing.T) {
+func TestCommandSubmitEmptyIsNoop(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
-	updated, _ := m.Update(ctrlO)
-	updated, _ = updated.(model).Update(keyEnter) // submit with empty branch
+	updated, _ := m.Update(keyTab)
+	updated, _ = updated.(model).Update(keyEnter) // submit with empty command
 	m = updated.(model)
 
 	require.Equal(t, modeList, m.mode)
@@ -88,49 +91,14 @@ func TestCursorMovesAndClamps(t *testing.T) {
 	require.Equal(t, 0, m.cursor) // clamped to first row
 }
 
-func TestEnterOpensDetailForCursorRepo(t *testing.T) {
-	m := newModel("x").addRepo("a", git.Repo{}).addRepo("b", git.Repo{})
-
-	updated, _ := m.Update(keyDown) // move cursor to "b"
-	m = updated.(model)
-	updated, cmd := m.Update(keyEnter)
-	m = updated.(model)
-
-	require.Equal(t, modeDetail, m.mode)
-	require.Equal(t, "b", m.detail.name)
-	require.NotNil(t, cmd) // diff load scheduled
-}
-
-func TestDetailEscReturnsToList(t *testing.T) {
+func TestDiffLoadedPopulatesRow(t *testing.T) {
 	m := newModel("x").addRepo("a", git.Repo{})
 
-	updated, _ := m.Update(keyEnter)
-	require.Equal(t, modeDetail, updated.(model).mode)
-
-	updated, _ = updated.(model).Update(keyEsc)
-	require.Equal(t, modeList, updated.(model).mode)
-}
-
-func TestDetailCarriesLastCommandError(t *testing.T) {
-	m := newModel("x").addRepo("a", git.Repo{})
-	m = m.setCmdResult("a", errors.New("pull boom"))
-
-	updated, _ := m.Update(keyEnter)
-	require.Error(t, updated.(model).detail.cmdErr)
-}
-
-func TestDetailLoadedPopulatesDiff(t *testing.T) {
-	m := newModel("x").addRepo("a", git.Repo{})
-
-	updated, _ := m.Update(keyEnter)
+	updated, _ := m.Update(diffLoadedMsg{name: "a", changes: lineChanges{added: 3, deleted: 1}})
 	m = updated.(model)
 
-	diff := git.DiffNumStat{Paths: []git.PathDiffNumStat{{Path: "f.go", AddedLines: 3, DeletedLines: 1}}}
-	updated, _ = m.Update(detailLoadedMsg{name: "a", diff: diff})
-	m = updated.(model)
-
-	require.True(t, m.detail.loaded)
-	require.Len(t, m.detail.diff.Paths, 1)
+	require.NotNil(t, m.repos[0].diff)
+	require.Equal(t, "+3 -1", m.repos[0].diff.String())
 }
 
 func TestHelpTogglesOpenAndClosed(t *testing.T) {

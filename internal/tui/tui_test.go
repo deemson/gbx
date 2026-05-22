@@ -12,8 +12,7 @@ import (
 )
 
 var (
-	ctrlP    = tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl}
-	ctrlO    = tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
+	keyTab   = tea.KeyPressMsg{Code: tea.KeyTab}
 	keyEnter = tea.KeyPressMsg{Code: tea.KeyEnter}
 	keyEsc   = tea.KeyPressMsg{Code: tea.KeyEscape}
 	keyUp    = tea.KeyPressMsg{Code: tea.KeyUp}
@@ -89,7 +88,7 @@ func TestRepoShowsChangedCount(t *testing.T) {
 	tp.waitForContent("dirty", "1 changed")
 }
 
-func TestPullSuccessShowsCheck(t *testing.T) {
+func TestRunPullSuccessShowsCheck(t *testing.T) {
 	dir := t.TempDir()
 
 	remoteDir := t.TempDir()
@@ -114,14 +113,16 @@ func TestPullSuccessShowsCheck(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("consumer", "↓1")
 
-	// ctrl+p pulls the filtered repo; success renders a fresh ✓ glyph.
+	// tab → type the command → enter; success renders a fresh ✓ glyph.
 	// (The behind→0 status change is an in-place cursor update the raw stream
 	// doesn't show contiguously, so the refresh is asserted at model level.)
-	tp.sendKey(ctrlP)
+	tp.sendKey(keyTab)
+	tp.send("pull")
+	tp.sendKey(keyEnter)
 	tp.waitForContent("✓")
 }
 
-func TestPullFailureShowsCross(t *testing.T) {
+func TestRunPullFailureShowsCross(t *testing.T) {
 	dir := t.TempDir()
 	repo := mkRepo(t, dir, "lonely")
 	repo.SetupCommitConfig()
@@ -131,11 +132,13 @@ func TestPullFailureShowsCross(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("lonely")
 
-	tp.sendKey(ctrlP)
+	tp.sendKey(keyTab)
+	tp.send("pull") // no upstream → fails
+	tp.sendKey(keyEnter)
 	tp.waitForContent("✗")
 }
 
-func TestCheckoutSuccessShowsCheck(t *testing.T) {
+func TestRunSwitchSuccessShowsCheck(t *testing.T) {
 	dir := t.TempDir()
 	repo := mkRepo(t, dir, "proj")
 	repo.SetupCommitConfig()
@@ -148,15 +151,13 @@ func TestCheckoutSuccessShowsCheck(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("proj")
 
-	// ctrl+o opens the transient branch prompt; typing routes to it, not the filter.
-	tp.sendKey(ctrlO)
-	tp.waitForContent("branch:")
-	tp.send("feature")
+	tp.sendKey(keyTab)
+	tp.send("switch feature")
 	tp.sendKey(keyEnter)
 	tp.waitForContent("✓")
 }
 
-func TestCheckoutUnknownBranchShowsCross(t *testing.T) {
+func TestRunUnknownCommandShowsCross(t *testing.T) {
 	dir := t.TempDir()
 	repo := mkRepo(t, dir, "proj")
 	repo.SetupCommitConfig()
@@ -166,43 +167,22 @@ func TestCheckoutUnknownBranchShowsCross(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("proj")
 
-	tp.sendKey(ctrlO)
-	tp.waitForContent("branch:")
-	tp.send("nope-not-real")
+	tp.sendKey(keyTab)
+	tp.send("switch nope-not-real")
 	tp.sendKey(keyEnter)
 	tp.waitForContent("✗")
 }
 
-func TestDrillInShowsDiff(t *testing.T) {
+func TestRowShowsLineChanges(t *testing.T) {
 	dir := t.TempDir()
 	repo := mkRepo(t, dir, "proj")
 	repo.SetupCommitConfig()
 	repo.WriteFileAdd("a.txt", "1\n2\n3\n")
 	repo.Commit("c1")
-	repo.WriteFile("a.txt", "1\n2\nchanged\n4\n") // modify the tracked file
+	repo.WriteFile("a.txt", "1\n2\n3\n4\n") // append one tracked line → +1 -0
 
 	tp := runTestProgram(t, dir)
-	tp.waitForContent("proj", "1 changed")
-
-	tp.sendKey(keyEnter) // cursor on the only repo → drill in
-	tp.waitForContent("changes vs HEAD", "a.txt")
-}
-
-func TestDrillInShowsLastCommandError(t *testing.T) {
-	dir := t.TempDir()
-	repo := mkRepo(t, dir, "proj")
-	repo.SetupCommitConfig()
-	repo.WriteFileAdd("f", "x")
-	repo.Commit("c1")
-
-	tp := runTestProgram(t, dir)
-	tp.waitForContent("proj")
-
-	tp.sendKey(ctrlP) // pull fails (no upstream)
-	tp.waitForContent("✗")
-
-	tp.sendKey(keyEnter) // drill into the failed repo
-	tp.waitForContent("last command error")
+	tp.waitForContent("proj", "1 changed", "+1 -0")
 }
 
 func TestHelpOverlayShowsBindings(t *testing.T) {
@@ -213,7 +193,7 @@ func TestHelpOverlayShowsBindings(t *testing.T) {
 	tp.waitForContent("proj")
 
 	tp.sendKey(ctrlG)
-	tp.waitForContent("gbx — keys", "ctrl+p", "ctrl+o", "ctrl+r")
+	tp.waitForContent("gbx — keys", "tab", "ctrl+r", "ctrl+g")
 }
 
 func TestRefreshPicksUpExternalChange(t *testing.T) {

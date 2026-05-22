@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
@@ -9,41 +8,45 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/deemson/gbx/internal/git"
+	"github.com/mattn/go-shellwords"
+	"github.com/rs/zerolog/log"
 )
 
 type repoEntry struct {
 	name   string
 	repo   git.Repo
-	status *repoStatus // nil until loaded
+	status *repoStatus  // nil until loaded
+	diff   *lineChanges // nil until loaded
 	cmd    cmdState
-	cmdErr error // last command error, surfaced via drill-in
 }
 
 // uiMode is which screen has key focus. In modeList the filter is focused and
-// printable keys filter; the other modes capture keys for their own use.
+// printable keys filter; modeCommand captures keys for the git command input;
+// modeHelp shows the bindings overlay.
 type uiMode int
 
 const (
 	modeList uiMode = iota
-	modeBranchPrompt
-	modeDetail
+	modeCommand
 	modeHelp
 )
 
-// model is the root TUI model. The filter input is always focused (fzf-style):
-// printable keys edit the filter, and every action is a non-printable binding.
+// model is the root TUI model. In the list, the filter input is always focused
+// (fzf-style): printable keys edit the filter and every action is a
+// non-printable binding. tab switches to command mode, where the same input
+// line edits an arbitrary git command run against the filtered repos.
 type model struct {
 	dir    string
 	filter textinput.Model
-	// branch is the transient checkout prompt, shown and given key focus only
-	// in modeBranchPrompt. The filter is blurred for its duration.
-	branch textinput.Model
-	repos  []repoEntry
-	cursor int        // index into the filtered list; the drill-in target
-	mode   uiMode     // which screen owns key input
-	detail detailView // populated while mode == modeDetail
-	width  int
-	height int
+	// command is the git command input, shown and given key focus only in
+	// modeCommand. The filter is blurred for its duration but keeps its value,
+	// so the list stays filtered and the command targets that subset.
+	command textinput.Model
+	repos   []repoEntry
+	cursor  int    // index into the filtered list
+	mode    uiMode // which screen owns key input
+	width   int
+	height  int
 }
 
 func newModel(dir string) model {
@@ -58,14 +61,14 @@ func newModel(dir string) model {
 	// model the program runs. Calling Focus() in Init() would not, because
 	// Init() returns only a Cmd, discarding the mutated model.
 	filter.Focus()
-	branch := textinput.New()
-	branch.Prompt = "branch: "
-	branch.Placeholder = "switch to branch"
-	branch.SetWidth(40)
+	command := textinput.New()
+	command.Prompt = "$ "
+	command.Placeholder = "git command (runs on filtered repos)"
+	command.SetWidth(40)
 	return model{
-		dir:    dir,
-		filter: filter,
-		branch: branch,
+		dir:     dir,
+		filter:  filter,
+		command: command,
 	}
 }
 
@@ -79,14 +82,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.filter.SetWidth(msg.Width - lipgloss.Width(m.filter.Prompt))
-		m.branch.SetWidth(msg.Width - lipgloss.Width(m.branch.Prompt))
+		m.command.SetWidth(msg.Width - lipgloss.Width(m.command.Prompt))
 		return m, nil
 	case tea.KeyPressMsg:
 		switch m.mode {
-		case modeBranchPrompt:
-			return m.updateBranchPrompt(msg)
-		case modeDetail:
-			return m.updateDetail(msg)
+		case modeCommand:
+			return m.updateCommand(msg)
 		case modeHelp:
 			return m.updateHelp(msg)
 		}
@@ -99,12 +100,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "down", "ctrl+j":
 			m.cursor++
 			return m.clampCursor(), nil
-		case "enter":
-			return m.openDetail()
-		case "ctrl+p":
-			return m.runOnFiltered(pullCmd)
-		case "ctrl+o":
-			return m.openBranchPrompt()
+		case "tab":
+			return m.enterCommand()
 		case "ctrl+r":
 			return m.refreshFiltered()
 		case "ctrl+g":
@@ -119,20 +116,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 	case repoFoundMsg:
-		return m.addRepo(msg.name, msg.repo), statusCmd(msg.name, msg.repo)
+		return m.addRepo(msg.name, msg.repo), tea.Batch(statusCmd(msg.name, msg.repo), diffCmd(msg.name, msg.repo))
 	case statusLoadedMsg:
 		return m.setStatus(msg.name, msg.status), nil
+	case diffLoadedMsg:
+		return m.setDiff(msg.name, msg.changes), nil
 	case cmdDoneMsg:
 		m = m.setCmdResult(msg.name, msg.err)
 		if repo, ok := m.repoByName(msg.name); ok {
-			return m, statusCmd(msg.name, repo) // auto-refresh after the command
-		}
-		return m, nil
-	case detailLoadedMsg:
-		if m.mode == modeDetail && m.detail.name == msg.name {
-			m.detail.diff = msg.diff
-			m.detail.err = msg.err
-			m.detail.loaded = true
+			// auto-refresh status and line changes after the command
+			return m, tea.Batch(statusCmd(msg.name, repo), diffCmd(msg.name, repo))
 		}
 		return m, nil
 	}
@@ -143,53 +136,62 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // runOnFiltered marks every repo currently matching the filter as running and
-// fires cmdFor against each. This is the shared entry point for command
-// bindings.
+// fires cmdFor against each. This is the shared entry point for command runs.
 func (m model) runOnFiltered(cmdFor func(name string, repo git.Repo) tea.Cmd) (model, tea.Cmd) {
 	var cmds []tea.Cmd
 	for _, i := range m.matchedIndexes() {
 		m.repos[i].cmd = cmdRunning
-		m.repos[i].cmdErr = nil
 		cmds = append(cmds, cmdFor(m.repos[i].name, m.repos[i].repo))
 	}
 	return m, tea.Batch(cmds...)
 }
 
-// openBranchPrompt opens the transient checkout prompt. While it is open, key
-// input edits the prompt (enter switches the filtered repos, esc cancels)
-// rather than the filter.
-func (m model) openBranchPrompt() (model, tea.Cmd) {
-	m.mode = modeBranchPrompt
-	m.branch.Reset()
+// enterCommand switches to command mode. The filter is blurred but keeps its
+// value, so the list stays filtered while the command input is focused.
+func (m model) enterCommand() (model, tea.Cmd) {
+	m.mode = modeCommand
+	m.command.Reset()
 	m.filter.Blur()
-	return m, m.branch.Focus()
+	return m, m.command.Focus()
 }
 
-// updateBranchPrompt routes a key to the open checkout prompt.
-func (m model) updateBranchPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
+// updateCommand routes a key to the open command input. enter parses the line
+// (shell-style, "git" prefix optional) and runs it on the filtered repos; tab
+// or esc cancels.
+func (m model) updateCommand(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c":
 		return m, tea.Quit
-	case "esc":
-		return m.closeBranchPrompt()
+	case "esc", "tab":
+		return m.exitCommand()
 	case "enter":
-		branch := strings.TrimSpace(m.branch.Value())
-		m, focusCmd := m.closeBranchPrompt()
-		if branch == "" {
+		input := strings.TrimSpace(m.command.Value())
+		m, focusCmd := m.exitCommand()
+		args, err := shellwords.Parse(input)
+		if err != nil {
+			log.Error().Err(err).Str("input", input).Msg("failed to parse command")
 			return m, focusCmd
 		}
-		m, runCmd := m.runOnFiltered(checkoutCmd(branch))
-		return m, tea.Batch(focusCmd, runCmd)
+		if len(args) > 0 && args[0] == "git" {
+			args = args[1:]
+		}
+		if len(args) == 0 {
+			return m, focusCmd
+		}
+		m, run := m.runOnFiltered(func(name string, repo git.Repo) tea.Cmd {
+			return commandCmd(name, repo, args)
+		})
+		return m, tea.Batch(focusCmd, run)
 	}
 	var cmd tea.Cmd
-	m.branch, cmd = m.branch.Update(msg)
+	m.command, cmd = m.command.Update(msg)
 	return m, cmd
 }
 
-// closeBranchPrompt dismisses the checkout prompt and returns focus to the filter.
-func (m model) closeBranchPrompt() (model, tea.Cmd) {
+// exitCommand dismisses the command input and returns focus to the filter.
+func (m model) exitCommand() (model, tea.Cmd) {
 	m.mode = modeList
-	m.branch.Blur()
+	m.command.Blur()
 	return m, m.filter.Focus()
 }
 
@@ -224,36 +226,12 @@ func (m model) clampCursor() model {
 	return m
 }
 
-// openDetail drills into the repo under the cursor, loading its diff vs HEAD.
-func (m model) openDetail() (model, tea.Cmd) {
-	m = m.clampCursor()
-	matched := m.matched()
-	if len(matched) == 0 {
-		return m, nil
-	}
-	sel := matched[m.cursor]
-	m.mode = modeDetail
-	m.detail = detailView{name: sel.name, cmdErr: sel.cmdErr}
-	return m, detailCmd(sel.name, sel.repo)
-}
-
-// updateDetail routes a key while the drill-in is open. Esc returns to the list.
-func (m model) updateDetail(msg tea.KeyPressMsg) (model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
-		return m, tea.Quit
-	case "esc":
-		m.mode = modeList
-		return m, nil
-	}
-	return m, nil
-}
-
-// refreshFiltered re-fetches git status for every repo matching the filter.
+// refreshFiltered re-fetches git status and line changes for every repo
+// matching the filter.
 func (m model) refreshFiltered() (model, tea.Cmd) {
 	var cmds []tea.Cmd
 	for _, r := range m.matched() {
-		cmds = append(cmds, statusCmd(r.name, r.repo))
+		cmds = append(cmds, statusCmd(r.name, r.repo), diffCmd(r.name, r.repo))
 	}
 	return m, tea.Batch(cmds...)
 }
@@ -291,13 +269,24 @@ func (m model) setStatus(name string, s repoStatus) model {
 	return m
 }
 
+// setDiff attaches loaded line changes to the named repo.
+func (m model) setDiff(name string, changes lineChanges) model {
+	for i := range m.repos {
+		if m.repos[i].name == name {
+			loaded := changes
+			m.repos[i].diff = &loaded
+			break
+		}
+	}
+	return m
+}
+
 // setCmdResult records the outcome of a command on the named repo.
 func (m model) setCmdResult(name string, err error) model {
 	for i := range m.repos {
 		if m.repos[i].name == name {
 			if err != nil {
 				m.repos[i].cmd = cmdFailed
-				m.repos[i].cmdErr = err
 			} else {
 				m.repos[i].cmd = cmdOK
 			}
@@ -317,21 +306,17 @@ func (m model) repoByName(name string) (git.Repo, bool) {
 }
 
 func (m model) View() tea.View {
-	if m.mode == modeDetail {
-		return tea.View{Content: m.detailContent(), AltScreen: true}
-	}
 	if m.mode == modeHelp {
 		return tea.View{Content: helpContent(), AltScreen: true}
 	}
 
-	sections := []string{m.filter.View()}
-	if m.mode == modeBranchPrompt {
-		sections = append(sections, m.branch.View())
+	input := m.filter.View()
+	if m.mode == modeCommand {
+		input = m.command.View()
 	}
-	sections = append(sections, "", m.listContent())
 
 	return tea.View{
-		Content:   lipgloss.JoinVertical(lipgloss.Left, sections...),
+		Content:   lipgloss.JoinVertical(lipgloss.Left, input, "", m.listContent()),
 		AltScreen: true,
 	}
 }
@@ -346,13 +331,17 @@ func (m model) listContent() string {
 		return "no matches"
 	}
 
-	nameWidth := 0
+	nameWidth, statusWidth := 0, 0
 	for _, r := range matched {
 		if w := lipgloss.Width(r.name); w > nameWidth {
 			nameWidth = w
 		}
+		if w := lipgloss.Width(statusText(r)); w > statusWidth {
+			statusWidth = w
+		}
 	}
 	nameCol := lipgloss.NewStyle().Width(nameWidth)
+	statusCol := lipgloss.NewStyle().Width(statusWidth)
 
 	rows := make([]string, len(matched))
 	for i, r := range matched {
@@ -360,11 +349,11 @@ func (m model) listContent() string {
 		if i == m.cursor {
 			marker = "▸ "
 		}
-		status := "..."
-		if r.status != nil {
-			status = r.status.line()
+		changes := "..."
+		if r.diff != nil {
+			changes = r.diff.String()
 		}
-		cols := []string{marker, nameCol.Render(r.name), "  ", status}
+		cols := []string{marker, nameCol.Render(r.name), "  ", statusCol.Render(statusText(r)), "  ", changes}
 		if g := r.cmd.glyph(); g != "" {
 			cols = append(cols, "  ", g)
 		}
@@ -373,30 +362,10 @@ func (m model) listContent() string {
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
-// detailContent renders the drill-in screen for m.detail.
-func (m model) detailContent() string {
-	d := m.detail
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n\n", d.name)
-
-	b.WriteString("changes vs HEAD:\n")
-	switch {
-	case !d.loaded:
-		b.WriteString("  ...\n")
-	case d.err != nil:
-		fmt.Fprintf(&b, "  (error: %s)\n", d.err)
-	case len(d.diff.Paths) == 0:
-		b.WriteString("  none\n")
-	default:
-		for _, p := range d.diff.Paths {
-			fmt.Fprintf(&b, "  +%d -%d  %s\n", p.AddedLines, p.DeletedLines, p.Path)
-		}
+// statusText is the status column for a row, or "..." until status loads.
+func statusText(r repoEntry) string {
+	if r.status == nil {
+		return "..."
 	}
-
-	if d.cmdErr != nil {
-		fmt.Fprintf(&b, "\nlast command error:\n  %s\n", d.cmdErr)
-	}
-
-	b.WriteString("\nesc: back\n")
-	return b.String()
+	return r.status.line()
 }

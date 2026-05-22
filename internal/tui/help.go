@@ -15,12 +15,11 @@ type keyBinding struct {
 var keyBindings = []keyBinding{
 	{"type", "filter repos (fuzzy)"},
 	{"↑ / ↓", "move the cursor (also ctrl+k / ctrl+j)"},
-	{"enter", "drill into the repo under the cursor"},
-	{"ctrl+p", "pull the filtered repos"},
-	{"ctrl+o", "checkout a branch on the filtered repos"},
+	{"tab", "toggle git command mode (runs on the filtered repos)"},
+	{"enter", "command mode: run the command on the filtered repos"},
 	{"ctrl+r", "refresh status of the filtered repos"},
 	{"ctrl+g", "toggle this help"},
-	{"esc", "back, or quit from the list"},
+	{"esc", "command mode: cancel; list: quit"},
 	{"ctrl+c", "quit"},
 }
 
