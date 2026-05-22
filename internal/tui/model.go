@@ -136,7 +136,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // runOnFiltered marks every repo currently matching the filter as running and
 // fires cmdFor against each. This is the shared entry point for command
-// bindings (pull now; checkout and others later).
+// bindings.
 func (m model) runOnFiltered(cmdFor func(name string, repo git.Repo) tea.Cmd) (model, tea.Cmd) {
 	pattern := m.filter.Value()
 	var cmds []tea.Cmd
