@@ -146,12 +146,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // fires cmdFor against each. This is the shared entry point for command
 // bindings.
 func (m model) runOnFiltered(cmdFor func(name string, repo git.Repo) tea.Cmd) (model, tea.Cmd) {
-	pattern := m.filter.Value()
 	var cmds []tea.Cmd
-	for i := range m.repos {
-		if !fuzzyMatch(pattern, m.repos[i].name) {
-			continue
-		}
+	for _, i := range m.matchedIndexes() {
 		m.repos[i].cmd = cmdRunning
 		m.repos[i].cmdErr = nil
 		cmds = append(cmds, cmdFor(m.repos[i].name, m.repos[i].repo))
@@ -197,14 +193,22 @@ func (m model) closeBranchPrompt() (model, tea.Cmd) {
 	return m, m.filter.Focus()
 }
 
-// matched returns the repos currently passing the filter, in display order.
+// matchedIndexes returns indexes into m.repos passing the filter, ranked
+// best-match-first; an empty filter yields every index in display order.
+func (m model) matchedIndexes() []int {
+	names := make([]string, len(m.repos))
+	for i, r := range m.repos {
+		names[i] = r.name
+	}
+	return rankFilter(m.filter.Value(), names)
+}
+
+// matched returns the repos currently passing the filter, ranked best-match-first.
 func (m model) matched() []repoEntry {
-	pattern := m.filter.Value()
-	var out []repoEntry
-	for _, r := range m.repos {
-		if fuzzyMatch(pattern, r.name) {
-			out = append(out, r)
-		}
+	idx := m.matchedIndexes()
+	out := make([]repoEntry, len(idx))
+	for i, j := range idx {
+		out[i] = m.repos[j]
 	}
 	return out
 }

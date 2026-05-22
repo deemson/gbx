@@ -1,20 +1,22 @@
 package tui
 
-import "strings"
+import "github.com/sahilm/fuzzy"
 
-// fuzzyMatch reports whether pattern occurs in target as a case-insensitive
-// subsequence (fzf-style). An empty pattern matches everything.
-func fuzzyMatch(pattern, target string) bool {
+// rankFilter returns the indexes of names matching pattern as a fzf-style fuzzy
+// subsequence, ranked best-match-first. An empty pattern matches every name, in
+// the original order.
+func rankFilter(pattern string, names []string) []int {
 	if pattern == "" {
-		return true
-	}
-	p := []rune(strings.ToLower(pattern))
-	t := []rune(strings.ToLower(target))
-	pi := 0
-	for ti := 0; ti < len(t) && pi < len(p); ti++ {
-		if t[ti] == p[pi] {
-			pi++
+		idx := make([]int, len(names))
+		for i := range names {
+			idx[i] = i
 		}
+		return idx
 	}
-	return pi == len(p)
+	matches := fuzzy.Find(pattern, names)
+	idx := make([]int, len(matches))
+	for i, m := range matches {
+		idx[i] = m.Index
+	}
+	return idx
 }
