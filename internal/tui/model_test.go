@@ -114,6 +114,80 @@ func TestHelpTogglesOpenAndClosed(t *testing.T) {
 	require.Equal(t, modeList, closedByCtrlG.(model).mode)
 }
 
+func TestPolarityTogglesWithCtrl1(t *testing.T) {
+	m := newModel("x")
+	require.Equal(t, polarityInclude, m.polarity) // default
+
+	toggled, _ := m.Update(ctrl1)
+	require.Equal(t, polarityExclude, toggled.(model).polarity)
+	require.Equal(t, "! ", toggled.(model).filter.Prompt)
+
+	back, _ := toggled.(model).Update(ctrl1)
+	require.Equal(t, polarityInclude, back.(model).polarity)
+	require.Equal(t, "> ", back.(model).filter.Prompt)
+}
+
+func TestFieldSelectsWithCtrl234(t *testing.T) {
+	m := newModel("x")
+	require.Equal(t, fieldNameBranch, m.field) // default
+
+	name, _ := m.Update(ctrl3)
+	require.Equal(t, fieldName, name.(model).field)
+	require.Equal(t, "name > ", name.(model).filter.Prompt)
+
+	branch, _ := name.(model).Update(ctrl4)
+	require.Equal(t, fieldBranch, branch.(model).field)
+	require.Equal(t, "branch > ", branch.(model).filter.Prompt)
+
+	back, _ := branch.(model).Update(ctrl2)
+	require.Equal(t, fieldNameBranch, back.(model).field)
+	require.Equal(t, "> ", back.(model).filter.Prompt)
+}
+
+func TestAxesAreOrthogonal(t *testing.T) {
+	m := newModel("x")
+
+	ex, _ := m.Update(ctrl1)          // exclude
+	br, _ := ex.(model).Update(ctrl4) // branch field, leaving polarity alone
+	bm := br.(model)
+
+	require.Equal(t, polarityExclude, bm.polarity)
+	require.Equal(t, fieldBranch, bm.field)
+	require.Equal(t, "branch ! ", bm.filter.Prompt)
+}
+
+func TestBranchFieldFiltersOnBranch(t *testing.T) {
+	m := newModel("x").addRepo("api-gateway", git.Repo{}).addRepo("auth-service", git.Repo{})
+	m = m.setStatus("api-gateway", repoStatus{branch: "develop"})
+	m = m.setStatus("auth-service", repoStatus{branch: "main"})
+
+	updated, _ := m.Update(ctrl4) // branch field
+	m = updated.(model)
+	for _, r := range "main" {
+		updated, _ = m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+		m = updated.(model)
+	}
+
+	matched := m.matched()
+	require.Len(t, matched, 1)
+	require.Equal(t, "auth-service", matched[0].name) // matched by branch, not name
+}
+
+func TestExcludeHidesMatchingRepos(t *testing.T) {
+	m := newModel("x").addRepo("api-gateway", git.Repo{}).addRepo("billing", git.Repo{})
+
+	updated, _ := m.Update(ctrl1) // exclude
+	m = updated.(model)
+	for _, r := range "api" {
+		updated, _ = m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+		m = updated.(model)
+	}
+
+	matched := m.matched()
+	require.Len(t, matched, 1)
+	require.Equal(t, "billing", matched[0].name) // the "api" match is excluded
+}
+
 func TestRefreshTargetsFilteredOnly(t *testing.T) {
 	m := newModel("x").addRepo("alpha", git.Repo{}).addRepo("beta", git.Repo{})
 

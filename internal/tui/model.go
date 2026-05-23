@@ -41,12 +41,14 @@ type model struct {
 	// command is the git command input, shown and given key focus only in
 	// modeCommand. The filter is blurred for its duration but keeps its value,
 	// so the list stays filtered and the command targets that subset.
-	command textinput.Model
-	repos   []repoEntry
-	cursor  int    // index into the filtered list
-	mode    uiMode // which screen owns key input
-	width   int
-	height  int
+	command  textinput.Model
+	repos    []repoEntry
+	cursor   int            // index into the filtered list
+	mode     uiMode         // which screen owns key input
+	field    filterField    // which text the filter matches against
+	polarity filterPolarity // whether the filter keeps matches or non-matches
+	width    int
+	height   int
 }
 
 func newModel(dir string) model {
@@ -102,6 +104,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.clampCursor(), nil
 		case "tab":
 			return m.enterCommand()
+		case "ctrl+1":
+			m.polarity = togglePolarity(m.polarity)
+			return m.afterModeChange()
+		case "ctrl+2":
+			m.field = fieldNameBranch
+			return m.afterModeChange()
+		case "ctrl+3":
+			m.field = fieldName
+			return m.afterModeChange()
+		case "ctrl+4":
+			m.field = fieldBranch
+			return m.afterModeChange()
 		case "ctrl+r":
 			return m.refreshFiltered()
 		case "ctrl+g":
@@ -195,14 +209,56 @@ func (m model) exitCommand() (model, tea.Cmd) {
 	return m, m.filter.Focus()
 }
 
+// afterModeChange applies a polarity/field switch: it refreshes the prompt to
+// reflect the new mode, resizes the filter for the new prompt width, and clamps
+// the cursor since the matched set may have changed.
+func (m model) afterModeChange() (model, tea.Cmd) {
+	m.filter.Prompt = m.filterPrompt()
+	if m.width > 0 {
+		m.filter.SetWidth(m.width - lipgloss.Width(m.filter.Prompt))
+	}
+	return m.clampCursor(), nil
+}
+
+// filterPrompt encodes the active filter mode (collapse-default scheme): the
+// trailing glyph is ">" for include, "!" for exclude; the field name prefixes
+// it unless the field is the default name+branch.
+func (m model) filterPrompt() string {
+	glyph := ">"
+	if m.polarity == polarityExclude {
+		glyph = "!"
+	}
+	switch m.field {
+	case fieldName:
+		return "name " + glyph + " "
+	case fieldBranch:
+		return "branch " + glyph + " "
+	default:
+		return glyph + " "
+	}
+}
+
+func togglePolarity(p filterPolarity) filterPolarity {
+	if p == polarityInclude {
+		return polarityExclude
+	}
+	return polarityInclude
+}
+
 // matchedIndexes returns indexes into m.repos passing the filter, ranked
-// best-match-first; an empty filter yields every index in display order.
+// best-match-first; an empty filter yields every index in display order. The
+// active field and polarity (ctrl+1..4) shape the match. A repo whose status
+// has not loaded contributes an empty branch, which never matches.
 func (m model) matchedIndexes() []int {
 	names := make([]string, len(m.repos))
+	branches := make([]string, len(m.repos))
 	for i, r := range m.repos {
 		names[i] = r.name
+		if r.status != nil {
+			branches[i] = r.status.branch
+		}
 	}
-	return rankFilter(m.filter.Value(), names)
+	return rankFilter(m.filter.Value(), names, branches, m.field, m.polarity)
 }
 
 // matched returns the repos currently passing the filter, ranked best-match-first.

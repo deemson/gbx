@@ -19,6 +19,10 @@ var (
 	keyDown  = tea.KeyPressMsg{Code: tea.KeyDown}
 	ctrlR    = tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl}
 	ctrlG    = tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl}
+	ctrl1    = tea.KeyPressMsg{Code: '1', Mod: tea.ModCtrl}
+	ctrl2    = tea.KeyPressMsg{Code: '2', Mod: tea.ModCtrl}
+	ctrl3    = tea.KeyPressMsg{Code: '3', Mod: tea.ModCtrl}
+	ctrl4    = tea.KeyPressMsg{Code: '4', Mod: tea.ModCtrl}
 )
 
 func mkRepo(t *testing.T, dir, name string) gitest.Repo {
