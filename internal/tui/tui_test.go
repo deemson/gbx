@@ -78,7 +78,7 @@ func TestRepoShowsCleanState(t *testing.T) {
 	branch := repo.BranchShowCurrent()
 
 	tp := runTestProgram(t, dir)
-	tp.waitForContent("withcommit", branch, "↑0 ↓0", "clean")
+	tp.waitForContent("withcommit", branch, "✓") // clean tree → check glyph
 }
 
 func TestRepoShowsChangedCount(t *testing.T) {
@@ -90,7 +90,7 @@ func TestRepoShowsChangedCount(t *testing.T) {
 	repo.WriteFileAdd("b", "2") // staged, uncommitted
 
 	tp := runTestProgram(t, dir)
-	tp.waitForContent("dirty", "1 changed")
+	tp.waitForContent("dirty", "✚1") // one staged-added file
 }
 
 func TestRunPullSuccessShowsCheck(t *testing.T) {
@@ -205,7 +205,7 @@ func TestRowShowsLineChanges(t *testing.T) {
 	repo.WriteFile("a.txt", "1\n2\n3\n4\n") // append one tracked line → +1 -0
 
 	tp := runTestProgram(t, dir)
-	tp.waitForContent("proj", "1 changed", "+1 -0")
+	tp.waitForContent("proj", "~1", "+1 -0") // one unstaged-modified file
 }
 
 func TestHelpOverlayShowsBindings(t *testing.T) {
@@ -227,11 +227,11 @@ func TestRefreshPicksUpExternalChange(t *testing.T) {
 	repo.Commit("c1")
 
 	tp := runTestProgram(t, dir)
-	tp.waitForContent("proj", "clean")
+	tp.waitForContent("proj", "✓")
 
 	repo.WriteFileAdd("b", "2") // change made after the initial status load
 	tp.sendKey(ctrlR)
-	tp.waitForContent("1 changed")
+	tp.waitForContent("✚1")
 }
 
 func TestFilterExcludingAllShowsNoMatches(t *testing.T) {

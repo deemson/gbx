@@ -63,11 +63,11 @@ const (
 func (c cmdState) glyph() string {
 	switch c {
 	case cmdRunning:
-		return "⟳"
+		return colorYellow.Render("⟳")
 	case cmdOK:
-		return "✓"
+		return colorGreen.Render("✓")
 	case cmdFailed:
-		return "✗"
+		return colorRed.Render("✗")
 	default:
 		return ""
 	}

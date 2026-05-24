@@ -17,8 +17,12 @@ type lineChanges struct {
 	deleted int
 }
 
+func (lc lineChanges) empty() bool {
+	return lc.added == 0 && lc.deleted == 0
+}
+
 func (lc lineChanges) String() string {
-	return fmt.Sprintf("+%d -%d", lc.added, lc.deleted)
+	return colorGreen.Render(fmt.Sprintf("+%d", lc.added)) + " " + colorRed.Render(fmt.Sprintf("-%d", lc.deleted))
 }
 
 type diffLoadedMsg struct {

@@ -474,17 +474,23 @@ func (m model) listContent() string {
 		return "no matches"
 	}
 
-	nameWidth, statusWidth := 0, 0
-	for _, r := range matched {
+	// Column widths are pinned to the full repo list, not just the matched
+	// subset, so they stay put as the filter narrows the visible rows.
+	nameWidth, branchWidth, stateWidth := 0, 0, 0
+	for _, r := range m.repos {
 		if w := lipgloss.Width(r.name); w > nameWidth {
 			nameWidth = w
 		}
-		if w := lipgloss.Width(statusText(r)); w > statusWidth {
-			statusWidth = w
+		if w := lipgloss.Width(branchText(r)); w > branchWidth {
+			branchWidth = w
+		}
+		if w := lipgloss.Width(stateText(r)); w > stateWidth {
+			stateWidth = w
 		}
 	}
 	nameCol := lipgloss.NewStyle().Width(nameWidth)
-	statusCol := lipgloss.NewStyle().Width(statusWidth)
+	branchCol := lipgloss.NewStyle().Width(branchWidth)
+	stateCol := lipgloss.NewStyle().Width(stateWidth)
 
 	rows := make([]string, len(matched))
 	for i, r := range matched {
@@ -492,11 +498,13 @@ func (m model) listContent() string {
 		if i == m.cursor {
 			marker = "▸ "
 		}
-		changes := "..."
-		if r.diff != nil {
-			changes = r.diff.String()
+		cols := []string{marker, nameCol.Render(r.name), "  ", branchCol.Render(branchText(r)), "  ", stateCol.Render(stateText(r))}
+		switch {
+		case r.diff == nil:
+			cols = append(cols, "  ", "...") // line changes not loaded yet
+		case !r.diff.empty():
+			cols = append(cols, "  ", r.diff.String()) // hidden entirely when +0 -0
 		}
-		cols := []string{marker, nameCol.Render(r.name), "  ", statusCol.Render(statusText(r)), "  ", changes}
 		if g := r.cmd.glyph(); g != "" {
 			cols = append(cols, "  ", g)
 		}
@@ -512,12 +520,20 @@ func (m model) listContent() string {
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
-// statusText is the status column for a row, or "..." until status loads.
-func statusText(r repoEntry) string {
+// branchText is the branch column for a row, or "..." until status loads.
+func branchText(r repoEntry) string {
 	if r.status == nil {
 		return "..."
 	}
-	return r.status.line()
+	return r.status.branchField()
+}
+
+// stateText is the change-state column for a row, empty until status loads.
+func stateText(r repoEntry) string {
+	if r.status == nil {
+		return ""
+	}
+	return r.status.stateField()
 }
 
 // truncate clips s to at most max runes, ending in "…" when it had to cut.

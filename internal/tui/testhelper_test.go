@@ -11,6 +11,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
@@ -61,6 +62,8 @@ func runTestProgram(t *testing.T, dir string) *testProgram {
 		tea.WithoutSignalHandler(),
 		tea.WithoutCatchPanics(),
 		tea.WithWindowSize(120, 30),
+		// Strip color so waitForContent asserts on plain glyph text, not SGR codes.
+		tea.WithColorProfile(colorprofile.Ascii),
 	)
 	errCh := make(chan error, 1)
 	go func() {

@@ -2,9 +2,11 @@ package tui
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/deemson/gbx/internal/git"
 	"github.com/stretchr/testify/require"
 )
@@ -221,7 +223,34 @@ func TestDiffLoadedPopulatesRow(t *testing.T) {
 	m = updated.(model)
 
 	require.NotNil(t, m.repos[0].diff)
-	require.Equal(t, "+3 -1", m.repos[0].diff.String())
+	require.Equal(t, lineChanges{added: 3, deleted: 1}, *m.repos[0].diff)
+}
+
+func TestEmptyDiffHidesChurn(t *testing.T) {
+	m := newModel("x").addRepo("r", git.Repo{})
+	m = m.setStatus("r", repoStatus{branch: "main", hasUpstream: true})
+
+	m = m.setDiff("r", lineChanges{}) // +0 -0
+	require.NotContains(t, ansi.Strip(m.listContent()), "+0")
+
+	m = m.setDiff("r", lineChanges{added: 2}) // non-empty → shown
+	require.Contains(t, ansi.Strip(m.listContent()), "+2 -0")
+}
+
+func TestColumnWidthsPinnedToFullList(t *testing.T) {
+	const short, long = "short", "a-very-long-repo-name"
+	m := newModel("x").addRepo(short, git.Repo{}).addRepo(long, git.Repo{})
+
+	for _, r := range short { // filter down to just the short repo
+		u, _ := m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+		m = u.(model)
+	}
+	require.Len(t, m.matched(), 1)
+
+	// The short name is still padded to the long (filtered-out) name's width,
+	// so the next column doesn't shift as the filter narrows.
+	pad := strings.Repeat(" ", len(long)-len(short))
+	require.Contains(t, ansi.Strip(m.listContent()), short+pad)
 }
 
 func TestHelpTogglesOpenAndClosed(t *testing.T) {
