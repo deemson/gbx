@@ -32,6 +32,97 @@ func TestCmdDoneMarksFailed(t *testing.T) {
 	require.Equal(t, cmdFailed, um.repos[0].cmd)
 }
 
+func TestSummaryFailureShowsFirstStderrLine(t *testing.T) {
+	m := newModel("x").addRepo("r", git.Repo{})
+
+	updated, _ := m.Update(cmdDoneMsg{
+		name: "r", args: []string{"pull"}, exit: 1,
+		stderr: "error: cannot pull\nhint: stash first\n",
+		err:    errors.New("exit 1"),
+	})
+	m = updated.(model)
+
+	require.Equal(t, cmdFailed, m.repos[0].cmd)
+	require.Equal(t, "error: cannot pull", m.repos[0].summary())
+}
+
+func TestSummarySuccessShowsLastStdoutLine(t *testing.T) {
+	m := newModel("x").addRepo("r", git.Repo{})
+
+	updated, _ := m.Update(cmdDoneMsg{
+		name: "r", args: []string{"pull"}, exit: 0,
+		stdout: "Updating a..b\nFast-forward\nAlready up to date.\n",
+	})
+	m = updated.(model)
+
+	require.Equal(t, cmdOK, m.repos[0].cmd)
+	require.Equal(t, "Already up to date.", m.repos[0].summary())
+}
+
+// The output pane is gated on the cursor repo having failed: present for a
+// failed repo, gone when the cursor sits on a successful one.
+func TestPaneShowsOnlyForFailedCursorRepo(t *testing.T) {
+	m := newModel("x").addRepo("bad", git.Repo{}).addRepo("ok", git.Repo{}) // sorted: bad(0), ok(1)
+
+	u, _ := m.Update(cmdDoneMsg{name: "ok", args: []string{"status"}, exit: 0, stdout: "clean\n"})
+	m = u.(model)
+	u, _ = m.Update(cmdDoneMsg{name: "bad", args: []string{"pull"}, exit: 1, stderr: "fatal: boom\n", err: errors.New("x")})
+	m = u.(model)
+
+	name, body := m.cursorOutput() // cursor on "bad"
+	require.Equal(t, "bad", name)
+	require.Contains(t, body, "fatal: boom")
+
+	moved, _ := m.Update(keyDown) // cursor → "ok"
+	m = moved.(model)
+	name, _ = m.cursorOutput()
+	require.Empty(t, name) // success → no pane
+}
+
+func TestPaneRetargetsAsCursorMoves(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{}).addRepo("b", git.Repo{})
+	for _, n := range []string{"a", "b"} {
+		u, _ := m.Update(cmdDoneMsg{name: n, args: []string{"pull"}, exit: 1, stderr: "err " + n + "\n", err: errors.New("x")})
+		m = u.(model)
+	}
+
+	require.Equal(t, "a", m.outputName) // cursor 0
+	moved, _ := m.Update(keyDown)
+	require.Equal(t, "b", moved.(model).outputName) // pane follows the cursor
+}
+
+func TestRerunClearsPriorResultAndHidesPane(t *testing.T) {
+	m := newModel("x").addRepo("r", git.Repo{})
+	u, _ := m.Update(cmdDoneMsg{name: "r", args: []string{"pull"}, exit: 1, stderr: "boom\n", err: errors.New("x")})
+	m = u.(model)
+	require.NotNil(t, m.repos[0].result)
+
+	u, _ = m.Update(keyTab) // command mode
+	m = u.(model)
+	for _, r := range "status" {
+		u, _ = m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+		m = u.(model)
+	}
+	u, _ = m.Update(keyEnter)
+	m = u.(model)
+
+	require.Equal(t, cmdRunning, m.repos[0].cmd)
+	require.Nil(t, m.repos[0].result) // prior output dropped
+	name, _ := m.cursorOutput()
+	require.Empty(t, name) // pane hidden while running
+}
+
+func TestPageKeysDoNotEditFilter(t *testing.T) {
+	m := newModel("x").addRepo("r", git.Repo{})
+
+	for _, k := range []tea.KeyPressMsg{keyPgDn, keyPgUp} {
+		u, _ := m.Update(k)
+		m = u.(model)
+	}
+
+	require.Empty(t, m.filter.Value()) // scroll keys are not printable filter input
+}
+
 func TestCommandModeTogglesWithTabAndEsc(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 

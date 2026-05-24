@@ -18,6 +18,7 @@ var keyBindings = []keyBinding{
 	{"ctrl+2", "filter by name"},
 	{"ctrl+3", "filter by branch"},
 	{"↑ / ↓", "move the cursor (also ctrl+k / ctrl+j)"},
+	{"pgup / pgdn", "scroll the output pane (shown for a failed repo)"},
 	{"tab", "toggle git command mode (runs on the filtered repos)"},
 	{"enter", "command mode: run the command on the filtered repos"},
 	{"ctrl+r", "refresh status of the filtered repos"},

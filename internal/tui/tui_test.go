@@ -17,6 +17,8 @@ var (
 	keyEsc   = tea.KeyPressMsg{Code: tea.KeyEscape}
 	keyUp    = tea.KeyPressMsg{Code: tea.KeyUp}
 	keyDown  = tea.KeyPressMsg{Code: tea.KeyDown}
+	keyPgUp  = tea.KeyPressMsg{Code: tea.KeyPgUp}
+	keyPgDn  = tea.KeyPressMsg{Code: tea.KeyPgDown}
 	ctrlR    = tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl}
 	ctrlG    = tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl}
 	ctrl1    = tea.KeyPressMsg{Code: '1', Mod: tea.ModCtrl}
@@ -139,6 +141,24 @@ func TestRunPullFailureShowsCross(t *testing.T) {
 	tp.send("pull") // no upstream → fails
 	tp.sendKey(keyEnter)
 	tp.waitForContent("✗")
+}
+
+func TestRunFailureShowsOutputPane(t *testing.T) {
+	dir := t.TempDir()
+	repo := mkRepo(t, dir, "lonely")
+	repo.SetupCommitConfig()
+	repo.WriteFileAdd("f", "x")
+	repo.Commit("c1")
+
+	tp := runTestProgram(t, dir)
+	tp.waitForContent("lonely")
+
+	tp.sendKey(keyTab)
+	tp.send("pull") // no upstream → fails
+	tp.sendKey(keyEnter)
+	// the failure pane is fresh content at the bottom: a header naming the repo
+	// and command, plus the labeled stderr.
+	tp.waitForContent("lonely $ git pull", "stderr:")
 }
 
 func TestRunSwitchSuccessShowsCheck(t *testing.T) {

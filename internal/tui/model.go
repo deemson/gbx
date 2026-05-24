@@ -1,10 +1,12 @@
 package tui
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/deemson/gbx/internal/git"
@@ -18,6 +20,7 @@ type repoEntry struct {
 	status *repoStatus  // nil until loaded
 	diff   *lineChanges // nil until loaded
 	cmd    cmdState
+	result *cmdResult // last command's full output; nil until one completes
 }
 
 // uiMode is which screen has key focus. In modeList the filter is focused and
@@ -41,13 +44,19 @@ type model struct {
 	// command is the git command input, shown and given key focus only in
 	// modeCommand. The filter is blurred for its duration but keeps its value,
 	// so the list stays filtered and the command targets that subset.
-	command  textinput.Model
-	repos  []repoEntry
-	cursor int         // index into the filtered list
-	mode   uiMode      // which screen owns key input
-	field  filterField // which text the filter matches against
-	width  int
-	height int
+	command textinput.Model
+	repos   []repoEntry
+	cursor  int         // index into the filtered list
+	mode    uiMode      // which screen owns key input
+	field   filterField // which text the filter matches against
+	width   int
+	height  int
+	// output is the scrollable pane showing the cursor repo's last command
+	// output. It is rendered only when that repo's command failed; outputName
+	// is the repo currently loaded into it, so scrolling persists until the
+	// cursor moves to a different repo.
+	output     viewport.Model
+	outputName string
 }
 
 func newModel(dir string) model {
@@ -70,6 +79,7 @@ func newModel(dir string) model {
 		dir:     dir,
 		filter:  filter,
 		command: command,
+		output:  viewport.New(),
 	}
 }
 
@@ -84,6 +94,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.filter.SetWidth(msg.Width - lipgloss.Width(m.filter.Prompt))
 		m.command.SetWidth(msg.Width - lipgloss.Width(m.command.Prompt))
+		m.output.SetWidth(msg.Width)
+		m.output.SetHeight(m.paneBodyHeight())
 		return m, nil
 	case tea.KeyPressMsg:
 		switch m.mode {
@@ -97,10 +109,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "up", "ctrl+k":
 			m.cursor--
-			return m.clampCursor(), nil
+			return m.clampCursor().refreshOutput(), nil
 		case "down", "ctrl+j":
 			m.cursor++
-			return m.clampCursor(), nil
+			return m.clampCursor().refreshOutput(), nil
+		case "pgup":
+			m.output.PageUp()
+			return m, nil
+		case "pgdown":
+			m.output.PageDown()
+			return m, nil
 		case "tab":
 			return m.enterCommand()
 		case "ctrl+1":
@@ -132,7 +150,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case diffLoadedMsg:
 		return m.setDiff(msg.name, msg.changes), nil
 	case cmdDoneMsg:
-		m = m.setCmdResult(msg.name, msg.err)
+		m = m.setCmdResult(msg).refreshOutput()
 		if repo, ok := m.repoByName(msg.name); ok {
 			// auto-refresh status and line changes after the command
 			return m, tea.Batch(statusCmd(msg.name, repo), diffCmd(msg.name, repo))
@@ -141,7 +159,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.filter, cmd = m.filter.Update(msg)
-	m = m.clampCursor() // the filter may have changed which rows match
+	// the filter may have changed which rows match, and so which repo the pane targets
+	m = m.clampCursor().refreshOutput()
 	return m, cmd
 }
 
@@ -151,9 +170,10 @@ func (m model) runOnFiltered(cmdFor func(name string, repo git.Repo) tea.Cmd) (m
 	var cmds []tea.Cmd
 	for _, i := range m.matchedIndexes() {
 		m.repos[i].cmd = cmdRunning
+		m.repos[i].result = nil // drop the prior output; the pane hides until this finishes
 		cmds = append(cmds, cmdFor(m.repos[i].name, m.repos[i].repo))
 	}
-	return m, tea.Batch(cmds...)
+	return m.refreshOutput(), tea.Batch(cmds...)
 }
 
 // enterCommand switches to command mode. The filter is blurred but keeps its
@@ -321,15 +341,18 @@ func (m model) setDiff(name string, changes lineChanges) model {
 	return m
 }
 
-// setCmdResult records the outcome of a command on the named repo.
-func (m model) setCmdResult(name string, err error) model {
+// setCmdResult records the outcome and full output of a command on the named
+// repo. A non-nil err (non-zero exit or a failure to start) marks the row
+// failed, which is what gates the output pane.
+func (m model) setCmdResult(msg cmdDoneMsg) model {
 	for i := range m.repos {
-		if m.repos[i].name == name {
-			if err != nil {
+		if m.repos[i].name == msg.name {
+			if msg.err != nil {
 				m.repos[i].cmd = cmdFailed
 			} else {
 				m.repos[i].cmd = cmdOK
 			}
+			m.repos[i].result = &cmdResult{args: msg.args, exit: msg.exit, stdout: msg.stdout, stderr: msg.stderr}
 			break
 		}
 	}
@@ -345,6 +368,61 @@ func (m model) repoByName(name string) (git.Repo, bool) {
 	return git.Repo{}, false
 }
 
+// cursorOutput returns the repo under the cursor and its full command output,
+// but only when that repo's last command failed. Otherwise it returns an empty
+// name, which is the signal that no pane should show.
+func (m model) cursorOutput() (string, string) {
+	matched := m.matched()
+	if m.cursor < 0 || m.cursor >= len(matched) {
+		return "", ""
+	}
+	r := matched[m.cursor]
+	if r.cmd != cmdFailed || r.result == nil {
+		return "", ""
+	}
+	return r.name, r.result.body()
+}
+
+// refreshOutput points the output viewport at the cursor repo's failed-command
+// output. It reloads (and resets the scroll to the top) only when the targeted
+// repo changes, so scrolling within one repo's output survives re-renders.
+func (m model) refreshOutput() model {
+	name, content := m.cursorOutput()
+	if name != m.outputName {
+		m.outputName = name
+		m.output.SetContent(content)
+		m.output.GotoTop()
+	}
+	return m
+}
+
+// paneBodyHeight is the viewport height: the ~1/3-screen pane minus its
+// separator and header lines.
+func (m model) paneBodyHeight() int {
+	return max(3, m.height/3-2)
+}
+
+// paneView renders the failure pane for the named repo: a separator, a header
+// naming the repo and the command that ran, and the scrollable output.
+func (m model) paneView(name string) string {
+	r, ok := m.entryByName(name)
+	if !ok || r.result == nil {
+		return ""
+	}
+	header := fmt.Sprintf("%s $ git %s → exit %d", name, strings.Join(r.result.args, " "), r.result.exit)
+	sep := strings.Repeat("─", max(1, m.width))
+	return lipgloss.JoinVertical(lipgloss.Left, sep, header, m.output.View())
+}
+
+func (m model) entryByName(name string) (repoEntry, bool) {
+	for i := range m.repos {
+		if m.repos[i].name == name {
+			return m.repos[i], true
+		}
+	}
+	return repoEntry{}, false
+}
+
 func (m model) View() tea.View {
 	if m.mode == modeHelp {
 		return tea.View{Content: helpContent(), AltScreen: true}
@@ -355,8 +433,13 @@ func (m model) View() tea.View {
 		input = m.command.View()
 	}
 
+	parts := []string{input, "", m.listContent()}
+	if name, _ := m.cursorOutput(); name != "" {
+		parts = append(parts, "", m.paneView(name))
+	}
+
 	return tea.View{
-		Content:   lipgloss.JoinVertical(lipgloss.Left, input, "", m.listContent()),
+		Content:   lipgloss.JoinVertical(lipgloss.Left, parts...),
 		AltScreen: true,
 	}
 }
@@ -397,6 +480,13 @@ func (m model) listContent() string {
 		if g := r.cmd.glyph(); g != "" {
 			cols = append(cols, "  ", g)
 		}
+		if s := r.summary(); s != "" {
+			prefix := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
+			if m.width > 0 {
+				s = truncate(s, m.width-lipgloss.Width(prefix)-2)
+			}
+			cols = append(cols, "  ", s)
+		}
 		rows[i] = lipgloss.JoinHorizontal(lipgloss.Top, cols...)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
@@ -408,4 +498,19 @@ func statusText(r repoEntry) string {
 		return "..."
 	}
 	return r.status.line()
+}
+
+// truncate clips s to at most max runes, ending in "…" when it had to cut.
+func truncate(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	if max == 1 {
+		return "…"
+	}
+	return string(r[:max-1]) + "…"
 }

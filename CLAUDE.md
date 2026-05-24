@@ -8,16 +8,19 @@ git commands across them.
 - **Arbitrary git command execution.** `tab` toggles the input line into command
   mode; the typed line (shell-style quoting, leading `git` optional) runs against
   the filtered repos via the generic `Repo.Run`. Per-repo result is a `⟳/✓/✗`
-  glyph (by exit code); the full stdout/stderr goes to `~/gbx.log`, **not** the
-  UI. Structured data shown in the table (status, `+/-` line changes) still comes
-  from typed wrapper methods.
+  glyph (by exit code) **plus a condensed one-liner** of the output — the first
+  `stderr` line on failure, the last `stdout` line on success. When the **cursor**
+  repo's command **failed**, a scrollable bottom pane (~1/3 height, `pgup`/`pgdn`)
+  shows that repo's full `stdout`/`stderr`; it hides on success or for the
+  non-cursor repos. The full output is still also logged to `~/gbx.log`.
+  Structured data shown in the table (status, `+/-` line changes) still comes from
+  typed wrapper methods.
 - **Discovery:** scan the *immediate* subdirectories of one root dir (CLI arg,
   default cwd); each that is a git repo becomes a row. No recursion, no config
   file.
 - A command acts on **the repos currently matching the filter** — no marking /
   multi-select, and **no confirmation step**. Clearing the filter targets all.
-- **Out of scope:** in-app command output (it goes to the log); config-file repo
-  lists; recursive discovery.
+- **Out of scope:** config-file repo lists; recursive discovery.
 
 ## Layout
 
@@ -53,8 +56,8 @@ git commands across them.
   substring. Assert state *transitions* with renderer-free model-level tests
   (drive `model.Update` directly, inspect state), as in `model_test.go`.
 - **Logging:** zerolog → `~/gbx.log` (the TUI owns stdout). Command output
-  (exit/stdout/stderr) is logged here — it has no in-app surface. Tests discard
-  logs (see `TestMain`).
+  (exit/stdout/stderr) is logged here in full, in addition to its in-app surface
+  (the row one-liner and the failure pane). Tests discard logs (see `TestMain`).
 
 ## Build / run / test
 
