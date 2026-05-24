@@ -185,33 +185,47 @@ func (m model) enterCommand() (model, tea.Cmd) {
 	return m, m.command.Focus()
 }
 
-// updateCommand routes a key to the open command input. enter parses the line
-// (shell-style, "git" prefix optional) and runs it on the filtered repos; tab
-// or esc cancels.
+// updateCommand routes a key while the command input is focused. enter parses
+// the line (shell-style, "git" prefix optional), runs it on the filtered repos,
+// then clears the line but stays in command mode so commands can be chained;
+// tab is the sole switch back to the filter and esc quits. ↑/↓ and ctrl+k/j
+// move the repo cursor and pgup/pgdn scroll the failure pane, so the cursor
+// repo's output is inspectable without leaving command mode.
 func (m model) updateCommand(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	switch msg.String() {
-	case "ctrl+c":
+	case "ctrl+c", "esc":
 		return m, tea.Quit
-	case "esc", "tab":
+	case "tab":
 		return m.exitCommand()
+	case "up", "ctrl+k":
+		m.cursor--
+		return m.clampCursor().refreshOutput(), nil
+	case "down", "ctrl+j":
+		m.cursor++
+		return m.clampCursor().refreshOutput(), nil
+	case "pgup":
+		m.output.PageUp()
+		return m, nil
+	case "pgdown":
+		m.output.PageDown()
+		return m, nil
 	case "enter":
 		input := strings.TrimSpace(m.command.Value())
-		m, focusCmd := m.exitCommand()
+		m.command.Reset()
 		args, err := shellwords.Parse(input)
 		if err != nil {
 			log.Error().Err(err).Str("input", input).Msg("failed to parse command")
-			return m, focusCmd
+			return m, nil
 		}
 		if len(args) > 0 && args[0] == "git" {
 			args = args[1:]
 		}
 		if len(args) == 0 {
-			return m, focusCmd
+			return m, nil
 		}
-		m, run := m.runOnFiltered(func(name string, repo git.Repo) tea.Cmd {
+		return m.runOnFiltered(func(name string, repo git.Repo) tea.Cmd {
 			return commandCmd(name, repo, args)
 		})
-		return m, tea.Batch(focusCmd, run)
 	}
 	var cmd tea.Cmd
 	m.command, cmd = m.command.Update(msg)

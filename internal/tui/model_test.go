@@ -123,7 +123,7 @@ func TestPageKeysDoNotEditFilter(t *testing.T) {
 	require.Empty(t, m.filter.Value()) // scroll keys are not printable filter input
 }
 
-func TestCommandModeTogglesWithTabAndEsc(t *testing.T) {
+func TestCommandModeTogglesWithTab(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
 	opened, _ := m.Update(keyTab)
@@ -131,10 +131,41 @@ func TestCommandModeTogglesWithTabAndEsc(t *testing.T) {
 
 	byTab, _ := opened.(model).Update(keyTab)
 	require.Equal(t, modeList, byTab.(model).mode)
+}
 
-	reopened, _ := m.Update(keyTab)
-	byEsc, _ := reopened.(model).Update(keyEsc)
-	require.Equal(t, modeList, byEsc.(model).mode)
+func TestEscQuitsFromCommandMode(t *testing.T) {
+	m := newModel("x").addRepo("r", git.Repo{})
+
+	opened, _ := m.Update(keyTab)
+	stay, cmd := opened.(model).Update(keyEsc)
+
+	require.Equal(t, modeCommand, stay.(model).mode) // esc no longer switches to the filter
+	require.IsType(t, tea.QuitMsg{}, cmd())          // it quits instead
+}
+
+func TestCursorMovesInCommandMode(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{}).addRepo("b", git.Repo{})
+	ctrlJ := tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl}
+
+	opened, _ := m.Update(keyTab)
+	moved, _ := opened.(model).Update(ctrlJ)
+
+	require.Equal(t, modeCommand, moved.(model).mode) // ctrl+j is not typed into the command line
+	require.Equal(t, 1, moved.(model).cursor)         // it moves the repo cursor instead
+}
+
+// Arrow keys move the cursor in command mode just like ctrl+j/k and like the
+// filter, so navigation is identical in both modes.
+func TestArrowKeysMoveCursorInCommandMode(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{}).addRepo("b", git.Repo{})
+
+	opened, _ := m.Update(keyTab)
+	down, _ := opened.(model).Update(keyDown)
+	require.Equal(t, modeCommand, down.(model).mode)
+	require.Equal(t, 1, down.(model).cursor) // down arrow moves the repo cursor
+
+	up, _ := down.(model).Update(keyUp)
+	require.Equal(t, 0, up.(model).cursor) // up arrow moves it back
 }
 
 func TestCommandSubmitMarksFilteredRunning(t *testing.T) {
@@ -149,7 +180,8 @@ func TestCommandSubmitMarksFilteredRunning(t *testing.T) {
 	updated, cmd := m.Update(keyEnter)
 	m = updated.(model)
 
-	require.Equal(t, modeList, m.mode)           // command mode closes on submit
+	require.Equal(t, modeCommand, m.mode)        // stays in command mode after submit
+	require.Empty(t, m.command.Value())          // the line is cleared for the next command
 	require.Equal(t, cmdRunning, m.repos[0].cmd) // filtered repo marked running
 	require.NotNil(t, cmd)
 }
@@ -161,7 +193,7 @@ func TestCommandSubmitEmptyIsNoop(t *testing.T) {
 	updated, _ = updated.(model).Update(keyEnter) // submit with empty command
 	m = updated.(model)
 
-	require.Equal(t, modeList, m.mode)
+	require.Equal(t, modeCommand, m.mode)     // empty submit stays in command mode
 	require.Equal(t, cmdNone, m.repos[0].cmd) // nothing run
 }
 
