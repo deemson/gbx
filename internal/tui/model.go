@@ -433,15 +433,21 @@ func (m model) View() tea.View {
 		input = m.command.View()
 	}
 
-	parts := []string{input, "", m.listContent()}
-	if name, _ := m.cursorOutput(); name != "" {
-		parts = append(parts, "", m.paneView(name))
+	top := lipgloss.JoinVertical(lipgloss.Left, input, "", m.listContent())
+	name, _ := m.cursorOutput()
+	if name == "" {
+		return tea.View{Content: top, AltScreen: true}
 	}
 
-	return tea.View{
-		Content:   lipgloss.JoinVertical(lipgloss.Left, parts...),
-		AltScreen: true,
+	// Anchor the failure pane to the bottom of the screen: pad the gap between
+	// the list and the pane so the pane sits in the bottom ~third rather than
+	// floating directly under a short list.
+	pane := m.paneView(name)
+	content := lipgloss.JoinVertical(lipgloss.Left, top, pane)
+	if gap := m.height - lipgloss.Height(top) - lipgloss.Height(pane); gap > 0 {
+		content = lipgloss.JoinVertical(lipgloss.Left, top, strings.Repeat("\n", gap-1), pane)
 	}
+	return tea.View{Content: content, AltScreen: true}
 }
 
 // listContent renders the repo rows (or an empty-state line) as a single block.
