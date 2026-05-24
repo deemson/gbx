@@ -15,10 +15,9 @@ func pick(names []string, idx []int) []string {
 	return out
 }
 
-// matchedNames runs a name-only include filter and returns matched names in
-// ranked order.
+// matchedNames runs a name-only filter and returns matched names in ranked order.
 func matchedNames(pattern string, names []string) []string {
-	return pick(names, rankFilter(pattern, names, make([]string, len(names)), fieldName, polarityInclude))
+	return pick(names, rankFilter(pattern, names, make([]string, len(names)), fieldName))
 }
 
 func TestRankFilterMembership(t *testing.T) {
@@ -48,14 +47,14 @@ func TestRankFilterRanksBestFirst(t *testing.T) {
 
 func TestRankFilterEmptyKeepsOrder(t *testing.T) {
 	names := []string{"charlie", "alpha", "bravo"}
-	require.Equal(t, []int{0, 1, 2}, rankFilter("", names, make([]string, 3), fieldNameBranch, polarityInclude))
+	require.Equal(t, []int{0, 1, 2}, rankFilter("", names, make([]string, 3), fieldNameBranch))
 }
 
 func TestRankFilterNameBranchMatchesEitherField(t *testing.T) {
 	names := []string{"api-gateway", "auth-service"}
 	branches := []string{"develop", "main"}
 	// "main" matches no name but the second repo's branch.
-	got := pick(names, rankFilter("main", names, branches, fieldNameBranch, polarityInclude))
+	got := pick(names, rankFilter("main", names, branches, fieldNameBranch))
 	require.Equal(t, []string{"auth-service"}, got)
 }
 
@@ -64,7 +63,7 @@ func TestRankFilterNameBranchSumsScores(t *testing.T) {
 	// score floats it above A.
 	names := []string{"service", "main-app"}
 	branches := []string{"main", "main"}
-	got := pick(names, rankFilter("main", names, branches, fieldNameBranch, polarityInclude))
+	got := pick(names, rankFilter("main", names, branches, fieldNameBranch))
 	require.Equal(t, []string{"main-app", "service"}, got)
 }
 
@@ -72,38 +71,68 @@ func TestRankFilterBranchOnly(t *testing.T) {
 	names := []string{"main-app", "auth-service"}
 	branches := []string{"develop", "main"}
 	// Field is branch, so the name "main-app" is ignored; only the branch matches.
-	got := pick(names, rankFilter("main", names, branches, fieldBranch, polarityInclude))
+	got := pick(names, rankFilter("main", names, branches, fieldBranch))
 	require.Equal(t, []string{"auth-service"}, got)
 }
 
 func TestRankFilterUnloadedBranchNeverMatches(t *testing.T) {
 	names := []string{"api-gateway"}
 	branches := []string{""} // status not loaded yet
-	got := rankFilter("main", names, branches, fieldBranch, polarityInclude)
+	got := rankFilter("main", names, branches, fieldBranch)
 	require.Empty(t, got)
 }
 
-func TestRankFilterExcludeKeepsNonMatches(t *testing.T) {
-	names := []string{"api-gateway", "auth-service", "billing"}
-	branches := make([]string, 3)
-	// Exclude name matches of "api": the matching repo drops, the rest stay in
-	// name order.
-	got := pick(names, rankFilter("api", names, branches, fieldName, polarityExclude))
-	require.Equal(t, []string{"auth-service", "billing"}, got)
+func TestRankFilterPrefixAnchorIsExact(t *testing.T) {
+	names := []string{"api-gateway", "legacy-api"}
+	// ^api keeps only the repo whose name starts with "api".
+	require.Equal(t, []string{"api-gateway"}, matchedNames("^api", names))
+	// ^agw must NOT match api-gateway: the prefix anchor is exact, not fuzzy.
+	require.Equal(t, []string{}, matchedNames("^agw", names))
 }
 
-func TestRankFilterExcludeEmptyShowsAll(t *testing.T) {
-	names := []string{"a", "b", "c"}
-	branches := make([]string, 3)
-	got := rankFilter("", names, branches, fieldNameBranch, polarityExclude)
-	require.Equal(t, []int{0, 1, 2}, got)
+func TestRankFilterSuffixAnchor(t *testing.T) {
+	names := []string{"api-gateway", "legacy-api"}
+	require.Equal(t, []string{"legacy-api"}, matchedNames("api$", names))
 }
 
-func TestRankFilterExcludeNameBranchDropsEitherFieldMatch(t *testing.T) {
+func TestRankFilterEqualsAnchor(t *testing.T) {
+	names := []string{"api", "api-gateway"}
+	// ^api$ is equality: "api-gateway" only starts with "api", so just "api".
+	require.Equal(t, []string{"api"}, matchedNames("^api$", names))
+}
+
+func TestRankFilterNegateIsExactSubstring(t *testing.T) {
+	names := []string{"api-gateway", "billing"}
+	// !api drops the repo containing "api"; substring, not fuzzy.
+	require.Equal(t, []string{"billing"}, matchedNames("!api", names))
+}
+
+func TestRankFilterAndsTerms(t *testing.T) {
+	names := []string{"api-gateway", "legacy-api", "billing"}
+	// "api !legacy": fuzzy-api AND not-legacy → only api-gateway survives.
+	require.Equal(t, []string{"api-gateway"}, matchedNames("api !legacy", names))
+}
+
+func TestRankFilterNegateNameBranchMissesBothFields(t *testing.T) {
 	names := []string{"api-gateway", "auth-service"}
 	branches := []string{"develop", "main"}
-	// Exclude "main": the second repo matches via its branch, so only the first
-	// survives.
-	got := pick(names, rankFilter("main", names, branches, fieldNameBranch, polarityExclude))
+	// !main drops the repo whose branch is main, even though no name has "main".
+	got := pick(names, rankFilter("!main", names, branches, fieldNameBranch))
 	require.Equal(t, []string{"api-gateway"}, got)
+}
+
+func TestRankFilterDegenerateTermsIgnored(t *testing.T) {
+	names := []string{"api-gateway", "billing"}
+	// A half-typed "!" (lone operator) is dropped: "api !" behaves like "api".
+	require.Equal(t, matchedNames("api", names), matchedNames("api !", names))
+	// Only lone operators => no effective term => everything matches in order.
+	require.Equal(t, []int{0, 1}, rankFilter("! ^ $", names, make([]string, 2), fieldName))
+}
+
+func TestRankFilterNoFuzzyKeepsInputOrder(t *testing.T) {
+	names := []string{"api-two", "api-one"} // intentionally not sorted
+	// ^api matches both; with no fuzzy term every survivor scores 0, so they keep
+	// input order (which the model feeds name-sorted).
+	got := pick(names, rankFilter("^api", names, make([]string, 2), fieldName))
+	require.Equal(t, []string{"api-two", "api-one"}, got)
 }
