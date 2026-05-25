@@ -21,8 +21,11 @@ sync-charm-land-examples:
       echo "==> $repo @ $version"
       local tmp
       tmp=$(mktemp -d)
+      # Drop git's benign "refs/tags/X is not a commit!" warning, emitted when
+      # shallow-cloning an annotated tag; keep every other stderr line.
       git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$version" \
-        "https://github.com/charmbracelet/$repo" "$tmp"
+        "https://github.com/charmbracelet/$repo" "$tmp" \
+        2> >(grep -v 'is not a commit!' >&2 || true)
       local got=0
       for sub in "$@"; do
         if [ -d "$tmp/$sub" ]; then
