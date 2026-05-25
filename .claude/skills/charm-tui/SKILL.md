@@ -20,6 +20,16 @@ mostly v1 and wrong (e.g. v2 imports are `charm.land/...v2`, and `Update` /
 Full indexes: `examples/bubbletea/examples/README.md` and the `lipgloss`
 example dirs. Paths below are relative to this skill directory.
 
+## Reading library source
+
+Examples show idiom; for exact API shape (signatures, struct fields, return
+types) read the **pinned source in the module cache** — it always matches
+`go.mod`, unlike anything vendored:
+
+- `go doc charm.land/bubbles/v2/list` — quick signature lookup.
+- `go list -m -f '{{.Dir}}' charm.land/bubbles/v2` — prints the cache dir;
+  `Read` files under it for full source.
+
 ## Learn the fundamentals first
 
 - `examples/bubbletea/tutorials/basics/` — Model/Init/Update/View, key

@@ -1,3 +1,7 @@
+[default]
+_default:
+	@just --list
+
 # Destination for the bundled upstream examples.
 examples_dir := ".claude/skills/charm-tui/examples"
 
