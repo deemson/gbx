@@ -16,6 +16,17 @@ var (
 	ErrDotGitOpen = errors.New("attempt to open .git/ as a repository")
 
 	ErrRepositoryHasNoCommits = errors.New("repository has no commits")
+	ErrUnknownPathspec        = errors.New("unknown pathspec")
+
+	ErrLocalChangesOverwritten = errors.New("local changes would be overwritten by checkout")
+	ErrUntrackedOverwritten    = errors.New("untracked files would be overwritten by checkout")
+
+	ErrBranchAlreadyExists = errors.New("branch already exists")
+
+	ErrNoRemote = errors.New("no remote")
+
+	ErrNoUpstream     = errors.New("no tracking information for the current branch")
+	ErrNotFastForward = errors.New("not possible to fast-forward")
 )
 
 type TokenParseError struct {

@@ -1,8 +1,8 @@
 package git
 
 import (
-	"bytes"
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/deemson/gbx/internal/git/exec"
@@ -24,36 +24,12 @@ func (r Repo) runGit(ctx context.Context, args ...string) (exec.Result, error) {
 	return r.git().Run(ctx, args...)
 }
 
-func (r Repo) RevParseHead(ctx context.Context) (string, error) {
-	res, err := r.runGit(ctx, "rev-parse", "HEAD")
-	if err != nil {
-		return "", NewUnknownRunErr(res, err)
-	}
-	return string(bytes.TrimSpace(res.Stdout)), nil
-}
-
-func (r Repo) BranchShowCurrent(ctx context.Context) (string, error) {
-	res, err := r.runGit(ctx, "branch", "--show-current")
-	if err != nil {
-		return "", NewUnknownRunErr(res, err)
-	}
-	return string(bytes.TrimSpace(res.Stdout)), nil
-}
-
 func (r Repo) Status(ctx context.Context) (Status, error) {
 	res, err := r.runGit(ctx, "status", "-z", "--porcelain=v2", "--branch", "--show-stash")
 	if err != nil {
 		return Status{}, NewUnknownRunErr(res, err)
 	}
 	return parseStatus(res.Stdout)
-}
-
-// Run executes an arbitrary git invocation against the repo and returns the raw
-// result. Unlike the typed methods, output is not parsed: callers inspect the
-// exit code and stdout/stderr themselves. err is non-nil iff git exited
-// non-zero (or failed to start).
-func (r Repo) Run(ctx context.Context, args ...string) (exec.Result, error) {
-	return r.runGit(ctx, args...)
 }
 
 func (r Repo) DiffNumStatHead(ctx context.Context) (DiffNumStat, error) {
@@ -68,4 +44,70 @@ func (r Repo) DiffNumStatHead(ctx context.Context) (DiffNumStat, error) {
 		return DiffNumStat{}, NewUnknownRunErr(res, err)
 	}
 	return parseDiffNumStat(res.Stdout)
+}
+
+func (r Repo) Checkout(ctx context.Context, what string) error {
+	res, err := r.runGit(ctx, "checkout", what)
+	if err != nil {
+		if res.ExitCode == 1 {
+			stderr := string(res.Stderr)
+			switch {
+			case strings.Contains(stderr, fmt.Sprintf("pathspec '%s' did not match", what)):
+				return ErrUnknownPathspec
+			case strings.Contains(stderr, "local changes to the following files would be overwritten"):
+				return ErrLocalChangesOverwritten
+			case strings.Contains(stderr, "untracked working tree files would be overwritten"):
+				return ErrUntrackedOverwritten
+			}
+		}
+		return NewUnknownRunErr(res, err)
+	}
+	return nil
+}
+
+func (r Repo) CheckoutBranch(ctx context.Context, name string) error {
+	res, err := r.runGit(ctx, "checkout", "-b", name)
+	if err != nil {
+		if res.ExitCode == 128 {
+			stderr := string(res.Stderr)
+			if strings.Contains(stderr, fmt.Sprintf("a branch named '%s' already exists", name)) {
+				return ErrBranchAlreadyExists
+			}
+		}
+		return NewUnknownRunErr(res, err)
+	}
+	return nil
+}
+
+func (r Repo) Fetch(ctx context.Context) error {
+	res, err := r.runGit(ctx, "fetch")
+	if err != nil {
+		if res.ExitCode == 128 {
+			stderr := string(res.Stderr)
+			if strings.Contains(stderr, "Could not read from remote repository") {
+				return ErrNoRemote
+			}
+		}
+		return NewUnknownRunErr(res, err)
+	}
+	return nil
+}
+
+func (r Repo) Pull(ctx context.Context) error {
+	res, err := r.runGit(ctx, "pull", "--ff-only")
+	if err != nil {
+		stderr := string(res.Stderr)
+		switch {
+		case res.ExitCode == 1 && strings.Contains(stderr, "There is no tracking information"):
+			return ErrNoUpstream
+		case res.ExitCode == 128 && strings.Contains(stderr, "Not possible to fast-forward"):
+			return ErrNotFastForward
+		case res.ExitCode == 1 && strings.Contains(stderr, "local changes to the following files would be overwritten"):
+			return ErrLocalChangesOverwritten
+		case res.ExitCode == 1 && strings.Contains(stderr, "untracked working tree files would be overwritten"):
+			return ErrUntrackedOverwritten
+		}
+		return NewUnknownRunErr(res, err)
+	}
+	return nil
 }

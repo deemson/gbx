@@ -32,15 +32,19 @@ func (r Repo) runGit(args ...string) (exec.Result, error) {
 }
 
 func (r Repo) RevParseHead() string {
-	commit, err := r.repo.RevParseHead(context.Background())
-	require.NoError(r.t, err)
-	return commit
+	res, err := r.runGit("rev-parse", "HEAD")
+	if err != nil {
+		require.NoError(r.t, git.NewUnknownRunErr(res, err))
+	}
+	return string(bytes.TrimSpace(res.Stdout))
 }
 
 func (r Repo) BranchShowCurrent() string {
-	branch, err := r.repo.BranchShowCurrent(context.Background())
-	require.NoError(r.t, err)
-	return branch
+	res, err := r.runGit("branch", "--show-current")
+	if err != nil {
+		require.NoError(r.t, git.NewUnknownRunErr(res, err))
+	}
+	return string(bytes.TrimSpace(res.Stdout))
 }
 
 func (r Repo) BranchSetUpstreamTo(remote, remoteBranch, branch string) {
@@ -58,10 +62,7 @@ func (r Repo) Checkout(what string) {
 }
 
 func (r Repo) CheckoutBranch(name string) {
-	res, err := r.runGit("checkout", "-b", name)
-	if err != nil {
-		require.NoError(r.t, git.NewUnknownRunErr(res, err))
-	}
+	require.NoError(r.t, r.repo.CheckoutBranch(context.Background(), name))
 }
 
 func (r Repo) WriteFile(subPath string, data string) {
@@ -126,17 +127,11 @@ func (r Repo) Push() {
 }
 
 func (r Repo) Pull() {
-	res, err := r.runGit("pull")
-	if err != nil {
-		require.NoError(r.t, git.NewUnknownRunErr(res, err))
-	}
+	require.NoError(r.t, r.repo.Pull(context.Background()))
 }
 
 func (r Repo) Fetch() {
-	res, err := r.runGit("fetch")
-	if err != nil {
-		require.NoError(r.t, git.NewUnknownRunErr(res, err))
-	}
+	require.NoError(r.t, r.repo.Fetch(context.Background()))
 }
 
 func (r Repo) RemoteAdd(name, url string) {
