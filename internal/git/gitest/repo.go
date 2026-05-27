@@ -126,8 +126,8 @@ func (r Repo) Push() {
 	}
 }
 
-func (r Repo) Pull() {
-	require.NoError(r.t, r.repo.Pull(context.Background()))
+func (r Repo) PullFastForward() {
+	require.NoError(r.t, r.repo.PullFastForward(context.Background()))
 }
 
 func (r Repo) Fetch() {

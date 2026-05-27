@@ -41,7 +41,7 @@ func (s *PullSuite) TestOK() {
 	origin.Commit("c2")
 	origin.Push()
 
-	err := clone.Repo().Pull(ctx)
+	err := clone.Repo().PullFastForward(ctx)
 	s.Assert().NoError(err)
 }
 
@@ -52,7 +52,7 @@ func (s *PullSuite) TestNoUpstream() {
 	repo.WriteFileAdd("file", "data")
 	repo.Commit("initial")
 
-	err := repo.Repo().Pull(ctx)
+	err := repo.Repo().PullFastForward(ctx)
 	if s.Assert().Error(err) {
 		s.Assert().ErrorIs(err, git.ErrNoUpstream)
 	}
@@ -69,7 +69,7 @@ func (s *PullSuite) TestNotFastForward() {
 	clone.WriteFileAdd("file", "diverged")
 	clone.Commit("diverging commit")
 
-	err := clone.Repo().Pull(ctx)
+	err := clone.Repo().PullFastForward(ctx)
 	if s.Assert().Error(err) {
 		s.Assert().ErrorIs(err, git.ErrNotFastForward)
 	}
@@ -85,7 +85,7 @@ func (s *PullSuite) TestLocalChangesOverwritten() {
 
 	clone.WriteFile("file", "uncommitted")
 
-	err := clone.Repo().Pull(ctx)
+	err := clone.Repo().PullFastForward(ctx)
 	if s.Assert().Error(err) {
 		s.Assert().ErrorIs(err, git.ErrLocalChangesOverwritten)
 	}
@@ -101,7 +101,7 @@ func (s *PullSuite) TestUntrackedOverwritten() {
 
 	clone.WriteFile("untracked", "local data")
 
-	err := clone.Repo().Pull(ctx)
+	err := clone.Repo().PullFastForward(ctx)
 	if s.Assert().Error(err) {
 		s.Assert().ErrorIs(err, git.ErrUntrackedOverwritten)
 	}

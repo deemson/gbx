@@ -109,7 +109,7 @@ func (r Repo) Fetch(ctx context.Context) error {
 	return nil
 }
 
-func (r Repo) Pull(ctx context.Context) error {
+func (r Repo) PullFastForward(ctx context.Context) error {
 	res, err := r.runGit(ctx, "pull", "--ff-only")
 	if err != nil {
 		stderr := string(res.Stderr)

@@ -62,7 +62,7 @@ func parseCommand(fields []string) (func(name string, repo git.Repo) tea.Cmd, bo
 		}, true
 	case len(fields) == 1 && fields[0] == "pull":
 		return func(name string, repo git.Repo) tea.Cmd {
-			return runCmd(name, "pull", repo.Pull)
+			return runCmd(name, "pull", repo.PullFastForward)
 		}, true
 	case len(fields) == 2 && fields[0] == "checkout" && fields[1] != "-b":
 		ref := fields[1]
