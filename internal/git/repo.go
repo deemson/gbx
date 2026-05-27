@@ -79,6 +79,22 @@ func (r Repo) CheckoutBranch(ctx context.Context, name string) error {
 	return nil
 }
 
+// Branches lists the repo's local branch names. A repo with no commits has no
+// branches and yields an empty slice.
+func (r Repo) Branches(ctx context.Context) ([]string, error) {
+	res, err := r.runGit(ctx, "branch", "--format=%(refname:short)")
+	if err != nil {
+		return nil, NewUnknownRunErr(res, err)
+	}
+	var branches []string
+	for line := range strings.SplitSeq(string(res.Stdout), "\n") {
+		if b := strings.TrimSpace(line); b != "" {
+			branches = append(branches, b)
+		}
+	}
+	return branches, nil
+}
+
 func (r Repo) Fetch(ctx context.Context) error {
 	res, err := r.runGit(ctx, "fetch")
 	if err != nil {

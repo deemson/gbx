@@ -8,7 +8,6 @@ require (
 	charm.land/lipgloss/v2 v2.0.3
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.7
-	github.com/mattn/go-shellwords v1.0.13
 	github.com/rs/zerolog v1.35.1
 	github.com/sahilm/fuzzy v0.1.2
 	github.com/stretchr/testify v1.11.1

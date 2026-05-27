@@ -12,18 +12,15 @@ import (
 )
 
 var (
-	keyTab   = tea.KeyPressMsg{Code: tea.KeyTab}
-	keyEnter = tea.KeyPressMsg{Code: tea.KeyEnter}
-	keyEsc   = tea.KeyPressMsg{Code: tea.KeyEscape}
-	keyUp    = tea.KeyPressMsg{Code: tea.KeyUp}
-	keyDown  = tea.KeyPressMsg{Code: tea.KeyDown}
-	keyPgUp  = tea.KeyPressMsg{Code: tea.KeyPgUp}
-	keyPgDn  = tea.KeyPressMsg{Code: tea.KeyPgDown}
-	ctrlR    = tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl}
-	ctrlG    = tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl}
-	ctrl1    = tea.KeyPressMsg{Code: '1', Mod: tea.ModCtrl}
-	ctrl2    = tea.KeyPressMsg{Code: '2', Mod: tea.ModCtrl}
-	ctrl3    = tea.KeyPressMsg{Code: '3', Mod: tea.ModCtrl}
+	keyTab      = tea.KeyPressMsg{Code: tea.KeyTab}
+	keyShiftTab = tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+	keyEnter    = tea.KeyPressMsg{Code: tea.KeyEnter}
+	keyEsc      = tea.KeyPressMsg{Code: tea.KeyEscape}
+	ctrlR       = tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl}
+	ctrlG       = tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl}
+	ctrl1       = tea.KeyPressMsg{Code: '1', Mod: tea.ModCtrl}
+	ctrl2       = tea.KeyPressMsg{Code: '2', Mod: tea.ModCtrl}
+	ctrl3       = tea.KeyPressMsg{Code: '3', Mod: tea.ModCtrl}
 )
 
 func mkRepo(t *testing.T, dir, name string) gitest.Repo {
@@ -118,10 +115,10 @@ func TestRunPullSuccessShowsCheck(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("consumer", "↓1")
 
-	// tab → type the command → enter; success renders a fresh ✓ glyph.
+	// enter → command mode → type → enter; success renders a fresh ✓ glyph.
 	// (The behind→0 status change is an in-place cursor update the raw stream
 	// doesn't show contiguously, so the refresh is asserted at model level.)
-	tp.sendKey(keyTab)
+	tp.sendKey(keyEnter)
 	tp.send("pull")
 	tp.sendKey(keyEnter)
 	tp.waitForContent("✓")
@@ -137,31 +134,13 @@ func TestRunPullFailureShowsCross(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("lonely")
 
-	tp.sendKey(keyTab)
+	tp.sendKey(keyEnter)
 	tp.send("pull") // no upstream → fails
 	tp.sendKey(keyEnter)
 	tp.waitForContent("✗")
 }
 
-func TestRunFailureShowsOutputPane(t *testing.T) {
-	dir := t.TempDir()
-	repo := mkRepo(t, dir, "lonely")
-	repo.SetupCommitConfig()
-	repo.WriteFileAdd("f", "x")
-	repo.Commit("c1")
-
-	tp := runTestProgram(t, dir)
-	tp.waitForContent("lonely")
-
-	tp.sendKey(keyTab)
-	tp.send("pull") // no upstream → fails
-	tp.sendKey(keyEnter)
-	// the failure pane is fresh content at the bottom: a header naming the repo
-	// and command, plus the labeled stderr.
-	tp.waitForContent("lonely $ git pull", "stderr:")
-}
-
-func TestRunSwitchSuccessShowsCheck(t *testing.T) {
+func TestRunCheckoutSwitchesToBranch(t *testing.T) {
 	dir := t.TempDir()
 	repo := mkRepo(t, dir, "proj")
 	repo.SetupCommitConfig()
@@ -172,15 +151,17 @@ func TestRunSwitchSuccessShowsCheck(t *testing.T) {
 	repo.Checkout(start) // leave "feature" existing but not current
 
 	tp := runTestProgram(t, dir)
-	tp.waitForContent("proj")
+	tp.waitForContent("proj", start)
 
-	tp.sendKey(keyTab)
-	tp.send("switch feature")
 	tp.sendKey(keyEnter)
-	tp.waitForContent("✓")
+	tp.send("checkout feature")
+	tp.sendKey(keyEnter)
+	// the post-command status refresh repaints the branch column with the new
+	// current branch — text not on screen before, so the raw stream shows it.
+	tp.waitForContent("feature")
 }
 
-func TestRunUnknownCommandShowsCross(t *testing.T) {
+func TestRunCheckoutUnknownRefShowsCross(t *testing.T) {
 	dir := t.TempDir()
 	repo := mkRepo(t, dir, "proj")
 	repo.SetupCommitConfig()
@@ -190,8 +171,8 @@ func TestRunUnknownCommandShowsCross(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("proj")
 
-	tp.sendKey(keyTab)
-	tp.send("switch nope-not-real")
+	tp.sendKey(keyEnter)
+	tp.send("checkout nope-not-real")
 	tp.sendKey(keyEnter)
 	tp.waitForContent("✗")
 }

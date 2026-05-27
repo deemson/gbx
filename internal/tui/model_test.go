@@ -22,7 +22,7 @@ func TestCmdDoneMarksOKAndSchedulesRefresh(t *testing.T) {
 	um := updated.(model)
 
 	require.Equal(t, cmdOK, um.repos[0].cmd)
-	require.NotNil(t, cmd) // status + diff auto-refresh scheduled after the command
+	require.NotNil(t, cmd) // status + diff + branches auto-refresh scheduled after the command
 }
 
 func TestCmdDoneMarksFailed(t *testing.T) {
@@ -34,146 +34,62 @@ func TestCmdDoneMarksFailed(t *testing.T) {
 	require.Equal(t, cmdFailed, um.repos[0].cmd)
 }
 
-func TestSummaryFailureShowsFirstStderrLine(t *testing.T) {
+func TestSummaryFailureShowsError(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
-	updated, _ := m.Update(cmdDoneMsg{
-		name: "r", args: []string{"pull"}, exit: 1,
-		stderr: "error: cannot pull\nhint: stash first\n",
-		err:    errors.New("exit 1"),
-	})
+	updated, _ := m.Update(cmdDoneMsg{name: "r", err: git.ErrNotFastForward})
 	m = updated.(model)
 
 	require.Equal(t, cmdFailed, m.repos[0].cmd)
-	require.Equal(t, "error: cannot pull", m.repos[0].summary())
+	require.Equal(t, git.ErrNotFastForward.Error(), m.repos[0].summary())
 }
 
-func TestSummarySuccessShowsLastStdoutLine(t *testing.T) {
+func TestSummarySuccessIsEmpty(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
-	updated, _ := m.Update(cmdDoneMsg{
-		name: "r", args: []string{"pull"}, exit: 0,
-		stdout: "Updating a..b\nFast-forward\nAlready up to date.\n",
-	})
+	updated, _ := m.Update(cmdDoneMsg{name: "r"})
 	m = updated.(model)
 
 	require.Equal(t, cmdOK, m.repos[0].cmd)
-	require.Equal(t, "Already up to date.", m.repos[0].summary())
+	require.Empty(t, m.repos[0].summary())
 }
 
-// The output pane is gated on the cursor repo having failed: present for a
-// failed repo, gone when the cursor sits on a successful one.
-func TestPaneShowsOnlyForFailedCursorRepo(t *testing.T) {
-	m := newModel("x").addRepo("bad", git.Repo{}).addRepo("ok", git.Repo{}) // sorted: bad(0), ok(1)
-
-	u, _ := m.Update(cmdDoneMsg{name: "ok", args: []string{"status"}, exit: 0, stdout: "clean\n"})
-	m = u.(model)
-	u, _ = m.Update(cmdDoneMsg{name: "bad", args: []string{"pull"}, exit: 1, stderr: "fatal: boom\n", err: errors.New("x")})
-	m = u.(model)
-
-	name, body := m.cursorOutput() // cursor on "bad"
-	require.Equal(t, "bad", name)
-	require.Contains(t, body, "fatal: boom")
-
-	moved, _ := m.Update(keyDown) // cursor → "ok"
-	m = moved.(model)
-	name, _ = m.cursorOutput()
-	require.Empty(t, name) // success → no pane
-}
-
-func TestPaneRetargetsAsCursorMoves(t *testing.T) {
-	m := newModel("x").addRepo("a", git.Repo{}).addRepo("b", git.Repo{})
-	for _, n := range []string{"a", "b"} {
-		u, _ := m.Update(cmdDoneMsg{name: n, args: []string{"pull"}, exit: 1, stderr: "err " + n + "\n", err: errors.New("x")})
-		m = u.(model)
-	}
-
-	require.Equal(t, "a", m.outputName) // cursor 0
-	moved, _ := m.Update(keyDown)
-	require.Equal(t, "b", moved.(model).outputName) // pane follows the cursor
-}
-
-func TestRerunClearsPriorResultAndHidesPane(t *testing.T) {
-	m := newModel("x").addRepo("r", git.Repo{})
-	u, _ := m.Update(cmdDoneMsg{name: "r", args: []string{"pull"}, exit: 1, stderr: "boom\n", err: errors.New("x")})
-	m = u.(model)
-	require.NotNil(t, m.repos[0].result)
-
-	u, _ = m.Update(keyTab) // command mode
-	m = u.(model)
-	for _, r := range "status" {
-		u, _ = m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
-		m = u.(model)
-	}
-	u, _ = m.Update(keyEnter)
-	m = u.(model)
-
-	require.Equal(t, cmdRunning, m.repos[0].cmd)
-	require.Nil(t, m.repos[0].result) // prior output dropped
-	name, _ := m.cursorOutput()
-	require.Empty(t, name) // pane hidden while running
-}
-
-func TestPageKeysDoNotEditFilter(t *testing.T) {
+func TestEnterEntersCommandMode(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
-	for _, k := range []tea.KeyPressMsg{keyPgDn, keyPgUp} {
-		u, _ := m.Update(k)
-		m = u.(model)
-	}
-
-	require.Empty(t, m.filter.Value()) // scroll keys are not printable filter input
-}
-
-func TestCommandModeTogglesWithTab(t *testing.T) {
-	m := newModel("x").addRepo("r", git.Repo{})
-
-	opened, _ := m.Update(keyTab)
+	opened, _ := m.Update(keyEnter)
 	require.Equal(t, modeCommand, opened.(model).mode)
-
-	byTab, _ := opened.(model).Update(keyTab)
-	require.Equal(t, modeList, byTab.(model).mode)
 }
 
-func TestEscQuitsFromCommandMode(t *testing.T) {
+func TestEscFromCommandReturnsToFilterAndClears(t *testing.T) {
+	m := newModel("x").addRepo("r", git.Repo{})
+	for _, r := range "abc" { // a filter typed in filter mode
+		u, _ := m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+		m = u.(model)
+	}
+	require.Equal(t, "abc", m.filter.Value())
+
+	u, _ := m.Update(keyEnter) // → command mode (filter kept)
+	m = u.(model)
+	require.Equal(t, "abc", m.filter.Value())
+
+	u, _ = m.Update(keyEsc) // → filter mode, cleared
+	m = u.(model)
+	require.Equal(t, modeFilter, m.mode)
+	require.Empty(t, m.filter.Value())
+}
+
+func TestEscFromFilterQuits(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
-	opened, _ := m.Update(keyTab)
-	stay, cmd := opened.(model).Update(keyEsc)
-
-	require.Equal(t, modeCommand, stay.(model).mode) // esc no longer switches to the filter
-	require.IsType(t, tea.QuitMsg{}, cmd())          // it quits instead
+	_, cmd := m.Update(keyEsc)
+	require.IsType(t, tea.QuitMsg{}, cmd())
 }
 
-func TestCursorMovesInCommandMode(t *testing.T) {
-	m := newModel("x").addRepo("a", git.Repo{}).addRepo("b", git.Repo{})
-	ctrlJ := tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl}
-
-	opened, _ := m.Update(keyTab)
-	moved, _ := opened.(model).Update(ctrlJ)
-
-	require.Equal(t, modeCommand, moved.(model).mode) // ctrl+j is not typed into the command line
-	require.Equal(t, 1, moved.(model).cursor)         // it moves the repo cursor instead
-}
-
-// Arrow keys move the cursor in command mode just like ctrl+j/k and like the
-// filter, so navigation is identical in both modes.
-func TestArrowKeysMoveCursorInCommandMode(t *testing.T) {
-	m := newModel("x").addRepo("a", git.Repo{}).addRepo("b", git.Repo{})
-
-	opened, _ := m.Update(keyTab)
-	down, _ := opened.(model).Update(keyDown)
-	require.Equal(t, modeCommand, down.(model).mode)
-	require.Equal(t, 1, down.(model).cursor) // down arrow moves the repo cursor
-
-	up, _ := down.(model).Update(keyUp)
-	require.Equal(t, 0, up.(model).cursor) // up arrow moves it back
-}
-
-func TestCommandSubmitMarksFilteredRunning(t *testing.T) {
+func TestCommandSubmitRunsOnFiltered(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
-	updated, _ := m.Update(keyTab)
+	updated, _ := m.Update(keyEnter)
 	m = updated.(model)
 	for _, r := range "pull" { // routed to the command input, not the filter
 		updated, _ = m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
@@ -191,7 +107,7 @@ func TestCommandSubmitMarksFilteredRunning(t *testing.T) {
 func TestCommandSubmitEmptyIsNoop(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
-	updated, _ := m.Update(keyTab)
+	updated, _ := m.Update(keyEnter)
 	updated, _ = updated.(model).Update(keyEnter) // submit with empty command
 	m = updated.(model)
 
@@ -199,21 +115,80 @@ func TestCommandSubmitEmptyIsNoop(t *testing.T) {
 	require.Equal(t, cmdNone, m.repos[0].cmd) // nothing run
 }
 
-func TestCursorMovesAndClamps(t *testing.T) {
-	m := newModel("x").addRepo("a", git.Repo{}).addRepo("b", git.Repo{}).addRepo("c", git.Repo{})
-	require.Equal(t, 0, m.cursor)
+func TestUnknownCommandIsNoop(t *testing.T) {
+	m := newModel("x").addRepo("r", git.Repo{})
 
-	for i := 0; i < 5; i++ { // more downs than rows
-		updated, _ := m.Update(keyDown)
+	updated, _ := m.Update(keyEnter)
+	m = updated.(model)
+	for _, r := range "bogus" {
+		updated, _ = m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
 		m = updated.(model)
 	}
-	require.Equal(t, 2, m.cursor) // clamped to last row
+	updated, cmd := m.Update(keyEnter)
+	m = updated.(model)
 
-	for i := 0; i < 5; i++ {
-		updated, _ := m.Update(keyUp)
-		m = updated.(model)
-	}
-	require.Equal(t, 0, m.cursor) // clamped to first row
+	require.Equal(t, cmdNone, m.repos[0].cmd) // unrecognized command runs nothing
+	require.Nil(t, cmd)
+	require.Empty(t, m.command.Value()) // line still cleared
+}
+
+func TestTabCompletesCommandWord(t *testing.T) {
+	m := newModel("x").addRepo("r", git.Repo{})
+
+	updated, _ := m.Update(keyEnter)
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	m = updated.(model)
+	updated, _ = m.Update(keyTab) // first suggestion for "c"
+	m = updated.(model)
+
+	require.Equal(t, "checkout", m.command.Value())
+}
+
+func TestShiftTabCyclesBackward(t *testing.T) {
+	m := newModel("x").addRepo("r", git.Repo{})
+
+	updated, _ := m.Update(keyEnter)
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"}) // matches checkout, fetch
+	m = updated.(model)
+	updated, _ = m.Update(keyShiftTab) // wraps to the last suggestion
+	m = updated.(model)
+
+	require.Equal(t, "fetch", m.command.Value())
+}
+
+func TestCheckoutArgSuggestsUnionAndDashB(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{}).addRepo("b", git.Repo{})
+	m = m.setBranches("a", []string{"main", "feat"})
+	m = m.setBranches("b", []string{"main", "other"})
+
+	// "-b" plus every branch across the visible repos, deduped and sorted.
+	require.Equal(t, []string{"-b", "feat", "main", "other"}, m.suggestionsFor("checkout "))
+}
+
+func TestCheckoutBranchArgSuggestsUnion(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{}).addRepo("b", git.Repo{})
+	m = m.setBranches("a", []string{"main", "feat"})
+	m = m.setBranches("b", []string{"main", "other"})
+
+	// every branch across the visible repos, deduped and sorted.
+	require.Equal(t, []string{"feat", "main", "other"}, m.suggestionsFor("checkout -b "))
+}
+
+func TestSuggestionsFilterByActiveToken(t *testing.T) {
+	m := newModel("x").addRepo("r", git.Repo{})
+
+	require.Equal(t, []string{"fetch"}, m.suggestionsFor("fe")) // only fetch fuzzy-matches "fe"
+}
+
+func TestBranchesLoadedPopulatesRow(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+
+	updated, _ := m.Update(branchesLoadedMsg{name: "a", branches: []string{"main", "dev"}})
+	m = updated.(model)
+
+	require.Equal(t, []string{"main", "dev"}, m.repos[0].branches)
 }
 
 func TestDiffLoadedPopulatesRow(t *testing.T) {
@@ -260,10 +235,10 @@ func TestHelpTogglesOpenAndClosed(t *testing.T) {
 	require.Equal(t, modeHelp, opened.(model).mode)
 
 	closedByEsc, _ := opened.(model).Update(keyEsc)
-	require.Equal(t, modeList, closedByEsc.(model).mode)
+	require.Equal(t, modeFilter, closedByEsc.(model).mode)
 
 	closedByCtrlG, _ := opened.(model).Update(ctrlG)
-	require.Equal(t, modeList, closedByCtrlG.(model).mode)
+	require.Equal(t, modeFilter, closedByCtrlG.(model).mode)
 }
 
 func TestFieldSelectsWithCtrl123(t *testing.T) {

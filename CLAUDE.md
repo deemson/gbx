@@ -1,20 +1,20 @@
 # gbx
 
-A TUI to view the state of many git repositories at once **and** run arbitrary
-git commands across them.
+A TUI to view the state of many git repositories at once **and** run a fixed set
+of git commands across them.
 
 ## Scope
 
-- **Arbitrary git command execution.** `tab` toggles the input line into command
-  mode; the typed line (shell-style quoting, leading `git` optional) runs against
-  the filtered repos via the generic `Repo.Run`. Per-repo result is a `⟳/✓/✗`
-  glyph (by exit code) **plus a condensed one-liner** of the output — the first
-  `stderr` line on failure, the last `stdout` line on success. When the **cursor**
-  repo's command **failed**, a scrollable bottom pane (~1/3 height, `pgup`/`pgdn`)
-  shows that repo's full `stdout`/`stderr`; it hides on success or for the
-  non-cursor repos. The full output is still also logged to `~/gbx.log`.
-  Structured data shown in the table (status, `+/-` line changes) still comes from
-  typed wrapper methods.
+- **A fixed command set, not free-form.** `enter` applies the filter and switches
+  the input line into command mode; the typed line is a strict grammar —
+  `checkout <ref>`, `checkout -b <name>`, `fetch`, `pull` — each dispatched to its
+  typed `Repo` method. A **suggestion line** beneath gives position-aware
+  autocomplete (`tab`/`shift+tab` cycle, inserting inline): the command word at
+  token 0; for both `checkout` arg slots, the **union** of every branch across
+  the visible repos (`-b` is also offered in the `<ref>` slot). Per-repo
+  result is a `⟳/✓/✗` glyph **plus a one-liner** that, on failure, is the typed
+  error (`err.Error()`); success shows nothing. The error is also logged to
+  `~/gbx.log`. There is **no output pane** — the typed errors are the surface.
 - **Discovery:** scan the *immediate* subdirectories of one root dir (CLI arg,
   default cwd); each that is a git repo becomes a row. No recursion, no config
   file.
@@ -24,10 +24,11 @@ git commands across them.
 
 ## Layout
 
-- `internal/git` — the **tested git wrapper**. This is the foundation. Structured
-  reads are typed methods on `Repo` (`Status`, `DiffNumStatHead`); arbitrary
-  execution goes through the generic `Repo.Run(ctx, args...) (exec.Result, error)`.
-  **Do not shell out to `git` anywhere else.**
+- `internal/git` — the **tested git wrapper**. This is the foundation. Every git
+  action is a typed method on `Repo`: structured reads (`Status`,
+  `DiffNumStatHead`, `Branches`) and the command set (`Checkout`,
+  `CheckoutBranch`, `Fetch`, `Pull`), all mapping errors by attempt-and-read.
+  **Do not shell out to `git` anywhere else** — there is no generic runner.
   - `internal/git/exec` — raw `git` process runner.
   - `internal/git/gitest` — test helpers that build real repos (`Init`, `Clone`,
     `WriteFileAdd`, `Commit`, `Push`, `Pull`, `Fetch`, …). Use these for tests
@@ -38,15 +39,16 @@ git commands across them.
 
 ## Conventions
 
-- **Extend the git wrapper, don't bypass it.** A new *structured* read = a new
-  typed method on `Repo`, with errors mapped by **attempt-and-read** (inspect exit
-  code + stderr → typed error), as in `open.go` / `diff_numstat.go`. Everything
-  else runs through the generic `Repo.Run` — still never shell out elsewhere.
-- **The TUI is fzf-style:** in the list a filter input is always focused —
-  printable keys filter, every action is a non-printable binding. `tab` toggles
-  command mode, where the same line edits a git command (printable keys edit it)
-  run on the filtered repos. The `ctrl+g` help overlay renders from `keyBindings`
-  in `internal/tui/help.go` — that slice is the single source of truth.
+- **Extend the git wrapper, don't bypass it.** A new git action = a new typed
+  method on `Repo`, with errors mapped by **attempt-and-read** (inspect exit code
+  + stderr → typed error), as in `open.go` / `diff_numstat.go` / `repo.go`. Never
+  shell out elsewhere.
+- **The TUI is fzf-style:** in filter mode a filter input is always focused —
+  printable keys filter, every action is a non-printable binding. `enter` applies
+  the filter and enters command mode, where the line accepts the strict command
+  grammar with autocomplete (`tab`/`shift+tab` cycle suggestions); `esc` returns
+  to filter mode, clearing the filter. The `ctrl+g` help overlay renders from the
+  binding slices in `internal/tui/help.go` — those are the single source of truth.
 - **Test the TUI end-to-end** with the `testProgram` harness (`internal/tui`,
   `testhelper_test.go`): it drives a real `tea.Program`, inject keys with
   `send`/`sendKey`, assert rendered output with `waitForContent`. Build fixtures
@@ -55,9 +57,9 @@ git commands across them.
   appended* text — an in-place change (e.g. `↓1`→`↓0`) is not a contiguous
   substring. Assert state *transitions* with renderer-free model-level tests
   (drive `model.Update` directly, inspect state), as in `model_test.go`.
-- **Logging:** zerolog → `~/gbx.log` (the TUI owns stdout). Command output
-  (exit/stdout/stderr) is logged here in full, in addition to its in-app surface
-  (the row one-liner and the failure pane). Tests discard logs (see `TestMain`).
+- **Logging:** zerolog → `~/gbx.log` (the TUI owns stdout). Each command's
+  outcome (the typed error, or success) is logged here, in addition to its in-app
+  surface (the row glyph + error one-liner). Tests discard logs (see `TestMain`).
 
 ## Build / run / test
 
@@ -67,5 +69,6 @@ git commands across them.
 ## Workflow
 
 - Code + test each change, then commit before the next.
-- Arbitrary commands can lose work (e.g. `reset --hard`, `clean -fd`) and run with
-  no confirmation — run `code-review` / `security-review` on request.
+- The command set is non-destructive (`checkout` refuses to overwrite local
+  changes; `pull` is `--ff-only`) and runs with no confirmation step — run
+  `code-review` / `security-review` on request.
