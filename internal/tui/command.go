@@ -4,7 +4,6 @@ import (
 	"context"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/deemson/gbx/internal/git"
 	"github.com/rs/zerolog/log"
 )
 
@@ -48,35 +47,6 @@ func (r repoEntry) summary() string {
 		return r.cmdErr.Error()
 	}
 	return ""
-}
-
-// parseCommand maps a parsed command line to the action run against each repo,
-// or reports !ok when the line is not one of the four supported commands:
-//
-//	checkout <ref>   checkout -b <name>   fetch   pull
-func parseCommand(fields []string) (func(name string, repo git.Repo) tea.Cmd, bool) {
-	switch {
-	case len(fields) == 1 && fields[0] == "fetch":
-		return func(name string, repo git.Repo) tea.Cmd {
-			return runCmd(name, "fetch", repo.Fetch)
-		}, true
-	case len(fields) == 1 && fields[0] == "pull":
-		return func(name string, repo git.Repo) tea.Cmd {
-			return runCmd(name, "pull", repo.PullFastForward)
-		}, true
-	case len(fields) == 2 && fields[0] == "checkout" && fields[1] != "-b":
-		ref := fields[1]
-		return func(name string, repo git.Repo) tea.Cmd {
-			return runCmd(name, "checkout", func(ctx context.Context) error { return repo.Checkout(ctx, ref) })
-		}, true
-	case len(fields) == 3 && fields[0] == "checkout" && fields[1] == "-b":
-		branch := fields[2]
-		return func(name string, repo git.Repo) tea.Cmd {
-			return runCmd(name, "checkout -b", func(ctx context.Context) error { return repo.CheckoutBranch(ctx, branch) })
-		}, true
-	default:
-		return nil, false
-	}
 }
 
 // runCmd runs one typed git method on one repo off the UI goroutine, logging and

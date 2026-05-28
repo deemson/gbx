@@ -5,41 +5,41 @@ import (
 	"strings"
 )
 
-// keyBinding is one row of the help overlay. This slice is the source of truth
-// for the filter-mode bindings.
+// keyBinding is one row of the help overlay. These slices are the source of
+// truth for the bindings — the overlay is the user-facing discovery surface.
 type keyBinding struct {
 	keys string
 	desc string
 }
 
-var keyBindings = []keyBinding{
-	{"type", "filter repos (see filter syntax)"},
-	{"ctrl+1", "filter by name + branch (default)"},
-	{"ctrl+2", "filter by name"},
-	{"ctrl+3", "filter by branch"},
-	{"enter", "apply filter, enter command mode"},
-	{"ctrl+r", "refresh the filtered repos"},
-	{"ctrl+g", "toggle this help"},
-	{"esc", "quit"},
-	{"ctrl+c", "quit"},
+// listBindings document the default (list) mode: letter keys dispatch git
+// actions on the filtered set; F-keys open overlays; ctrl bindings toggle the
+// filter field. The bottom bar shows only "F1 Help" — this overlay is where
+// the rest of the keys are explained.
+var listBindings = []keyBinding{
+	{"F1", "toggle this help"},
+	{"F4", "filter prompt"},
+	{"r", "refresh filtered repos"},
+	{"f", "fetch on filtered repos"},
+	{"p", "pull (fast-forward) on filtered repos"},
+	{"c", "checkout <ref> prompt"},
+	{"b", "checkout -b <name> prompt"},
+	{"ctrl+1", "filter field: name + branch (default)"},
+	{"ctrl+2", "filter field: name"},
+	{"ctrl+3", "filter field: branch"},
+	{"q", "quit"},
+	{"ctrl+c", "quit (any mode)"},
 }
 
-// commandBindings document command mode, where the line runs one of the four
-// supported git commands against the filtered repos with autocomplete.
-var commandBindings = []keyBinding{
-	{"type", "edit the command (see commands)"},
-	{"tab", "next autocomplete suggestion"},
+// promptBindings document the shared behavior of the F4 / c / b prompts. F4
+// while open reverts; c and b lack that toggle (their letters are typeable).
+var promptBindings = []keyBinding{
+	{"type", "edit the draft"},
+	{"enter", "apply: F4 commits filter · c runs checkout · b runs checkout -b"},
+	{"esc", "clear the draft; if already empty, revert and close"},
+	{"F4", "(F4 prompt only) revert and close, discarding the draft"},
+	{"tab", "next branch suggestion (c prompt only)"},
 	{"shift+tab", "previous suggestion"},
-	{"enter", "run on the filtered repos"},
-	{"esc", "back to filter (clears it)"},
-}
-
-// commands is the fixed command vocabulary command mode accepts.
-var commands = []keyBinding{
-	{"checkout <ref>", "switch to an existing branch"},
-	{"checkout -b <name>", "create a new branch"},
-	{"fetch", "fetch from the remote"},
-	{"pull", "fast-forward pull"},
 }
 
 // filterSyntax documents the fzf-style filter DSL: space-separated terms ANDed
@@ -53,22 +53,18 @@ var filterSyntax = []keyBinding{
 
 func helpContent() string {
 	var b strings.Builder
-	b.WriteString("gbx — keys\n\nfilter mode\n\n")
-	for _, kb := range keyBindings {
+	b.WriteString("gbx — keys\n\nlist mode\n\n")
+	for _, kb := range listBindings {
 		fmt.Fprintf(&b, "  %-10s  %s\n", kb.keys, kb.desc)
 	}
-	b.WriteString("\ncommand mode\n\n")
-	for _, kb := range commandBindings {
+	b.WriteString("\nprompts (F4 filter · c checkout · b checkout -b)\n\n")
+	for _, kb := range promptBindings {
 		fmt.Fprintf(&b, "  %-10s  %s\n", kb.keys, kb.desc)
-	}
-	b.WriteString("\ncommands\n\n")
-	for _, c := range commands {
-		fmt.Fprintf(&b, "  %-18s  %s\n", c.keys, c.desc)
 	}
 	b.WriteString("\nfilter syntax (space = AND)\n\n")
 	for _, fs := range filterSyntax {
 		fmt.Fprintf(&b, "  %-10s  %s\n", fs.keys, fs.desc)
 	}
-	b.WriteString("\nesc: back\n")
+	b.WriteString("\nF1 or esc: back\n")
 	return b.String()
 }

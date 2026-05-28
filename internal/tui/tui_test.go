@@ -16,8 +16,8 @@ var (
 	keyShiftTab = tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
 	keyEnter    = tea.KeyPressMsg{Code: tea.KeyEnter}
 	keyEsc      = tea.KeyPressMsg{Code: tea.KeyEscape}
-	ctrlR       = tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl}
-	ctrlG       = tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl}
+	keyF1       = tea.KeyPressMsg{Code: tea.KeyF1}
+	keyF4       = tea.KeyPressMsg{Code: tea.KeyF4}
 	ctrl1       = tea.KeyPressMsg{Code: '1', Mod: tea.ModCtrl}
 	ctrl2       = tea.KeyPressMsg{Code: '2', Mod: tea.ModCtrl}
 	ctrl3       = tea.KeyPressMsg{Code: '3', Mod: tea.ModCtrl}
@@ -103,10 +103,8 @@ func TestRunPullSuccessShowsCheck(t *testing.T) {
 	producer.Commit("c1")
 	producer.PushSetUpstream("origin", producer.BranchShowCurrent())
 
-	// consumer lives inside the scanned dir, starts at c1, tracks origin.
 	consumer := gitest.Clone(t, remoteDir, filepath.Join(dir, "consumer"))
 
-	// producer advances the remote; consumer fetches → it now has something to pull.
 	producer.WriteFileAdd("file", "v1\nv2\n")
 	producer.Commit("c2")
 	producer.Push()
@@ -115,12 +113,8 @@ func TestRunPullSuccessShowsCheck(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("consumer", "↓1")
 
-	// enter → command mode → type → enter; success renders a fresh ✓ glyph.
-	// (The behind→0 status change is an in-place cursor update the raw stream
-	// doesn't show contiguously, so the refresh is asserted at model level.)
-	tp.sendKey(keyEnter)
-	tp.send("pull")
-	tp.sendKey(keyEnter)
+	// `p` directly runs pull on the filtered repos.
+	tp.send("p")
 	tp.waitForContent("✓")
 }
 
@@ -134,9 +128,7 @@ func TestRunPullFailureShowsCross(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("lonely")
 
-	tp.sendKey(keyEnter)
-	tp.send("pull") // no upstream → fails
-	tp.sendKey(keyEnter)
+	tp.send("p") // no upstream → fails
 	tp.waitForContent("✗")
 }
 
@@ -153,11 +145,10 @@ func TestRunCheckoutSwitchesToBranch(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("proj", start)
 
+	// `c` opens the checkout prompt; type the ref; Enter runs.
+	tp.send("c")
+	tp.send("feature")
 	tp.sendKey(keyEnter)
-	tp.send("checkout feature")
-	tp.sendKey(keyEnter)
-	// the post-command status refresh repaints the branch column with the new
-	// current branch — text not on screen before, so the raw stream shows it.
 	tp.waitForContent("feature")
 }
 
@@ -171,8 +162,8 @@ func TestRunCheckoutUnknownRefShowsCross(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("proj")
 
-	tp.sendKey(keyEnter)
-	tp.send("checkout nope-not-real")
+	tp.send("c")
+	tp.send("nope-not-real")
 	tp.sendKey(keyEnter)
 	tp.waitForContent("✗")
 }
@@ -196,8 +187,8 @@ func TestHelpOverlayShowsBindings(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("proj")
 
-	tp.sendKey(ctrlG)
-	tp.waitForContent("gbx — keys", "tab", "ctrl+r", "ctrl+g")
+	tp.sendKey(keyF1)
+	tp.waitForContent("gbx — keys", "list mode", "F4", "filter prompt")
 }
 
 func TestRefreshPicksUpExternalChange(t *testing.T) {
@@ -211,7 +202,7 @@ func TestRefreshPicksUpExternalChange(t *testing.T) {
 	tp.waitForContent("proj", "✓")
 
 	repo.WriteFileAdd("b", "2") // change made after the initial status load
-	tp.sendKey(ctrlR)
+	tp.send("r")
 	tp.waitForContent("✚1")
 }
 
@@ -223,6 +214,9 @@ func TestFilterExcludingAllShowsNoMatches(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("apple", "banana")
 
+	tp.sendKey(keyF4)
 	tp.send("zzzz")
+	tp.sendKey(keyEnter)
 	tp.waitForContent("no matches")
 }
+

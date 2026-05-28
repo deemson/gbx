@@ -5,15 +5,16 @@ of git commands across them.
 
 ## Scope
 
-- **A fixed command set, not free-form.** `enter` applies the filter and switches
-  the input line into command mode; the typed line is a strict grammar —
-  `checkout <ref>`, `checkout -b <name>`, `fetch`, `pull` — each dispatched to its
-  typed `Repo` method. A **suggestion line** beneath gives position-aware
-  autocomplete (`tab`/`shift+tab` cycle, inserting inline): the command word at
-  token 0; for both `checkout` arg slots, the **union** of every branch across
-  the visible repos (`-b` is also offered in the `<ref>` slot). Per-repo
-  result is a `⟳/✓/✗` glyph **plus a one-liner** that, on failure, is the typed
-  error (`err.Error()`); success shows nothing. The error is also logged to
+- **A fixed command set, not free-form.** List mode is the default — letter keys
+  dispatch typed `Repo` methods directly on the filtered repos: `r` refresh,
+  `f` fetch, `p` pull, `c` checkout (opens an arg prompt with branch autocomplete
+  drawn from the union across the visible repos; `tab`/`shift+tab` cycle), `b`
+  checkout -b (arg prompt, no autocomplete). `F1` toggles the help overlay; `F4`
+  opens the filter prompt (Enter commits the draft to the active filter; ESC
+  clears the draft, or — when already empty — reverts and closes; F4 while open
+  reverts). `q` (or `ctrl+c` anywhere) quits. Per-repo result is a `⟳/✓/✗`
+  glyph **plus a one-liner** that, on failure, is the typed error
+  (`err.Error()`); success shows nothing. The error is also logged to
   `~/gbx.log`. There is **no output pane** — the typed errors are the surface.
 - **Discovery:** scan the *immediate* subdirectories of one root dir (CLI arg,
   default cwd); each that is a git repo becomes a row. No recursion, no config
@@ -43,12 +44,17 @@ of git commands across them.
   method on `Repo`, with errors mapped by **attempt-and-read** (inspect exit code
   + stderr → typed error), as in `open.go` / `diff_numstat.go` / `repo.go`. Never
   shell out elsewhere.
-- **The TUI is fzf-style:** in filter mode a filter input is always focused —
-  printable keys filter, every action is a non-printable binding. `enter` applies
-  the filter and enters command mode, where the line accepts the strict command
-  grammar with autocomplete (`tab`/`shift+tab` cycle suggestions); `esc` returns
-  to filter mode, clearing the filter. The `ctrl+g` help overlay renders from the
-  binding slices in `internal/tui/help.go` — those are the single source of truth.
+- **The TUI is htop-style:** list mode is the default — letter keys dispatch
+  git actions directly on the filtered repos and `ctrl+1/2/3` toggle the filter
+  field (name+branch / name / branch). `F4` opens a transient filter prompt at
+  the bottom row; while it's open, the draft live-narrows the visible rows
+  (Enter commits to `m.filter`). `c` and `b` open argument prompts with the same
+  state machine, minus the retrigger-close — `c`/`b` are typeable in
+  refs/branch names. `F1` toggles the help overlay (alt screen). The bottom bar
+  shows the committed filter on the left (or empty when none) and `F1 Help`
+  pinned to the right corner; while a prompt is open, the prompt input replaces
+  the left half. The binding slices in `internal/tui/help.go` are the single
+  source of truth for what `F1` documents.
 - **Test the TUI end-to-end** with the `testProgram` harness (`internal/tui`,
   `testhelper_test.go`): it drives a real `tea.Program`, inject keys with
   `send`/`sendKey`, assert rendered output with `waitForContent`. Build fixtures
