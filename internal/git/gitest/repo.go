@@ -54,6 +54,13 @@ func (r Repo) BranchSetUpstreamTo(remote, remoteBranch, branch string) {
 	}
 }
 
+func (r Repo) Config(key, value string) {
+	res, err := r.runGit("config", key, value)
+	if err != nil {
+		require.NoError(r.t, git.NewUnknownRunErr(res, err))
+	}
+}
+
 func (r Repo) Checkout(what string) {
 	res, err := r.runGit("checkout", what)
 	if err != nil {
@@ -91,15 +98,9 @@ func (r Repo) RemovePathAdd(subPath string) {
 }
 
 func (r Repo) SetupCommitConfig() {
-	for _, args := range [][]string{
-		{"config", "user.email", "test@example.com"},
-		{"config", "user.name", "test"},
-		{"config", "commit.gpgsign", "false"},
-	} {
-		if res, err := r.runGit(args...); err != nil {
-			require.NoError(r.t, git.NewUnknownRunErr(res, err))
-		}
-	}
+	r.Config("user.email", "test@example.com")
+	r.Config("user.name", "test")
+	r.Config("commit.gpgsign", "false")
 }
 
 func (r Repo) Commit(message string) {

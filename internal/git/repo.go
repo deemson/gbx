@@ -118,6 +118,8 @@ func (r Repo) PullFastForward(ctx context.Context) error {
 			return ErrNoUpstream
 		case res.ExitCode == 128 && strings.Contains(stderr, "Not possible to fast-forward"):
 			return ErrNotFastForward
+		case res.ExitCode == 1 && strings.Contains(stderr, "no such ref was fetched"):
+			return ErrMergeRefNotFetched
 		case res.ExitCode == 1 && strings.Contains(stderr, "local changes to the following files would be overwritten"):
 			return ErrLocalChangesOverwritten
 		case res.ExitCode == 1 && strings.Contains(stderr, "untracked working tree files would be overwritten"):

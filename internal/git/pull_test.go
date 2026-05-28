@@ -2,6 +2,7 @@ package git_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/deemson/gbx/internal/git"
@@ -72,6 +73,21 @@ func (s *PullSuite) TestNotFastForward() {
 	err := clone.Repo().PullFastForward(ctx)
 	if s.Assert().Error(err) {
 		s.Assert().ErrorIs(err, git.ErrNotFastForward)
+	}
+}
+
+func (s *PullSuite) TestMergeRefNotFetched() {
+	ctx := context.Background()
+	_, clone := s.cloneWithRemote()
+
+	// Simulate the upstream branch having been deleted/renamed on the remote:
+	// the branch's configured merge ref no longer exists there, so pull fetches
+	// but never sees it.
+	clone.Config(fmt.Sprintf("branch.%s.merge", clone.BranchShowCurrent()), "refs/heads/does-not-exist")
+
+	err := clone.Repo().PullFastForward(ctx)
+	if s.Assert().Error(err) {
+		s.Assert().ErrorIs(err, git.ErrMergeRefNotFetched)
 	}
 }
 

@@ -25,8 +25,9 @@ var (
 
 	ErrNoRemote = errors.New("no remote")
 
-	ErrNoUpstream     = errors.New("no tracking information for the current branch")
-	ErrNotFastForward = errors.New("not possible to fast-forward")
+	ErrNoUpstream         = errors.New("no tracking information for the current branch")
+	ErrNotFastForward     = errors.New("not possible to fast-forward")
+	ErrMergeRefNotFetched = errors.New("configured upstream ref was not fetched from the remote")
 )
 
 type TokenParseError struct {
