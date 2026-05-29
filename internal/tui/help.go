@@ -13,17 +13,18 @@ type keyBinding struct {
 }
 
 // listBindings document the default (list) mode: letter keys dispatch git
-// actions on the filtered set; F-keys open overlays; ctrl bindings toggle the
-// filter field. The bottom bar shows only "F1 Help" — this overlay is where
-// the rest of the keys are explained.
+// actions on the filtered set; ? toggles help; ctrl+f opens the filter prompt;
+// ctrl+1/2/3 toggle the filter field. The header is always visible and shows
+// the committed filter + active field — this overlay is where the rest of the
+// keys are explained.
 var listBindings = []keyBinding{
-	{"F1", "toggle this help"},
-	{"F4", "filter prompt"},
+	{"?", "toggle this help"},
+	{"ctrl+f", "filter prompt"},
 	{"r", "refresh filtered repos"},
 	{"f", "fetch on filtered repos"},
 	{"p", "pull (fast-forward) on filtered repos"},
-	{"c", "checkout <ref> prompt"},
-	{"b", "checkout -b <name> prompt"},
+	{"c", "Switch Branch prompt (checkout <ref>)"},
+	{"b", "New Branch prompt (checkout -b <name>)"},
 	{"ctrl+1", "filter field: name + branch (default)"},
 	{"ctrl+2", "filter field: name"},
 	{"ctrl+3", "filter field: branch"},
@@ -31,14 +32,16 @@ var listBindings = []keyBinding{
 	{"ctrl+c", "quit (any mode)"},
 }
 
-// promptBindings document the shared behavior of the F4 / c / b prompts. F4
-// while open reverts; c and b lack that toggle (their letters are typeable).
+// promptBindings document the shared behavior of the ctrl+f / c / b prompts.
+// ctrl+f while the filter prompt is open reverts; c and b lack that toggle
+// (their letters are typeable). ctrl+1/2/3 toggle the field in the filter
+// prompt only; in c/b they fall through to the textinput.
 var promptBindings = []keyBinding{
 	{"type", "edit the draft"},
-	{"enter", "apply: F4 commits filter · c runs checkout · b runs checkout -b"},
+	{"enter", "apply: ctrl+f commits filter · c runs checkout · b runs checkout -b"},
 	{"esc", "clear the draft; if already empty, revert and close"},
-	{"F4", "(F4 prompt only) revert and close, discarding the draft"},
-	{"tab", "next branch suggestion (c prompt only)"},
+	{"ctrl+f", "(filter prompt only) revert and close, discarding the draft"},
+	{"tab", "next branch suggestion (c / b prompts)"},
 	{"shift+tab", "previous suggestion"},
 }
 
@@ -57,7 +60,7 @@ func helpContent() string {
 	for _, kb := range listBindings {
 		fmt.Fprintf(&b, "  %-10s  %s\n", kb.keys, kb.desc)
 	}
-	b.WriteString("\nprompts (F4 filter · c checkout · b checkout -b)\n\n")
+	b.WriteString("\nprompts (ctrl+f filter · c Switch Branch · b New Branch)\n\n")
 	for _, kb := range promptBindings {
 		fmt.Fprintf(&b, "  %-10s  %s\n", kb.keys, kb.desc)
 	}
@@ -65,6 +68,6 @@ func helpContent() string {
 	for _, fs := range filterSyntax {
 		fmt.Fprintf(&b, "  %-10s  %s\n", fs.keys, fs.desc)
 	}
-	b.WriteString("\nF1 or esc: back\n")
+	b.WriteString("\n? or esc: back\n")
 	return b.String()
 }

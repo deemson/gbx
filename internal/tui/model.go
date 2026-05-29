@@ -23,8 +23,8 @@ type repoEntry struct {
 }
 
 // uiMode is which screen has key focus. modeList is the default — letter keys
-// trigger commands directly; F1/F4/c/b open transient overlays. The three
-// *Prompt modes own the bottom-row text input; modeHelp is the alt-screen
+// trigger commands directly; ?/ctrl+f/c/b open transient overlays. The three
+// *Prompt modes own the header's top-row text input; modeHelp is the alt-screen
 // bindings overlay.
 type uiMode int
 
@@ -37,10 +37,11 @@ const (
 )
 
 // model is the root TUI model. List mode is the default state; letter keys
-// (r/f/p/c/b/q) dispatch directly to git actions on the filtered set, F4 opens a
-// transient filter prompt (committed → m.filter on Enter; reverted on F4 or
-// ESC-on-empty), c/b open argument prompts. The prompt textinput is shared
-// across the three prompt modes — its label and Enter semantics vary by mode.
+// (r/f/p/c/b/q) dispatch directly to git actions on the filtered set, ctrl+f
+// opens a transient filter prompt (committed → m.filter on Enter; reverted on
+// ctrl+f or ESC-on-empty), c/b open argument prompts. The prompt textinput is
+// shared across the three prompt modes — its label and Enter semantics vary by
+// mode.
 type model struct {
 	dir    string
 	repos  []repoEntry
@@ -65,7 +66,7 @@ type model struct {
 
 func newModel(dir string) model {
 	p := textinput.New()
-	p.Prompt = "filter: "
+	p.Prompt = filterLabel
 	// A non-zero width is required up front: textinput truncates the placeholder
 	// to Width()+1 runes. Resized on the first WindowSizeMsg.
 	p.SetWidth(40)
@@ -75,6 +76,14 @@ func newModel(dir string) model {
 		suggIndex: -1,
 	}
 }
+
+// Prompt labels in the header's top row. The label visually anchors what the
+// row currently is — filter status, branch picker, or new-branch namer.
+const (
+	filterLabel       = "Filter: "
+	switchBranchLabel = "Switch Branch: "
+	newBranchLabel    = "New Branch: "
+)
 
 func (m model) Init() tea.Cmd {
 	return readEntriesCmd(m.dir)
@@ -104,7 +113,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.setDiff(msg.name, msg.changes), nil
 	case branchesLoadedMsg:
 		m = m.setBranches(msg.name, msg.branches)
-		if m.mode == modeCheckoutPrompt {
+		if m.mode == modeCheckoutPrompt || m.mode == modeBranchPrompt {
 			m = m.recomputeSuggestions()
 		}
 		return m, nil
@@ -139,14 +148,14 @@ func (m model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 // updateList routes a key in list mode (default). Letter keys dispatch git
-// actions on the filtered set; F1/F4 open overlays; c/b open argument prompts;
-// q quits; ctrl+1/2/3 toggle the filter field.
+// actions on the filtered set; ? toggles help; ctrl+f opens the filter prompt;
+// c/b open argument prompts; q quits; ctrl+1/2/3 toggle the filter field.
 func (m model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "f1":
+	case "?":
 		m.mode = modeHelp
 		return m, nil
-	case "f4":
+	case "ctrl+f":
 		return m.openFilterPrompt()
 	case "q":
 		return m, tea.Quit
@@ -177,37 +186,25 @@ func (m model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// openFilterPrompt enters the F4 prompt with the committed filter pre-filled,
+// openFilterPrompt enters the ctrl+f prompt with the committed filter pre-filled,
 // so editing starts from the current state. effectiveFilter() makes the visible
 // rows track the draft live while the prompt is open.
 func (m model) openFilterPrompt() (model, tea.Cmd) {
 	m.mode = modeFilterPrompt
-	m = m.applyPromptLabel(m.filterLabel())
+	m = m.applyPromptLabel(filterLabel)
 	m.prompt.SetValue(m.filter)
 	m.prompt.CursorEnd()
 	return m, m.prompt.Focus()
 }
 
-// filterLabel reflects the active field in the filter prompt's label.
-func (m model) filterLabel() string {
-	switch m.field {
-	case fieldName:
-		return "name: "
-	case fieldBranch:
-		return "branch: "
-	default:
-		return "filter: "
-	}
-}
-
 // updateFilterPrompt handles keys with the filter prompt focused. Enter commits
-// the draft to m.filter and closes; F4 reverts (discards the draft) and closes;
-// ESC clears the draft, or — when the draft is already empty — reverts and
-// closes (same as F4-while-open). ctrl+1/2/3 still toggle the field; the
-// prompt's label updates so it's visible.
+// the draft to m.filter and closes; ctrl+f reverts (discards the draft) and
+// closes; ESC clears the draft, or — when the draft is already empty — reverts
+// and closes (same as ctrl+f-while-open). ctrl+1/2/3 still toggle the field;
+// the modes row in the header reflects the change live.
 func (m model) updateFilterPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	switch msg.String() {
-	case "f4":
+	case "ctrl+f":
 		return m.closePrompt(), nil
 	case "enter":
 		m.filter = m.prompt.Value()
@@ -220,13 +217,13 @@ func (m model) updateFilterPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
 		return m, nil
 	case "ctrl+1":
 		m.field = fieldNameBranch
-		return m.applyPromptLabel(m.filterLabel()), nil
+		return m, nil
 	case "ctrl+2":
 		m.field = fieldName
-		return m.applyPromptLabel(m.filterLabel()), nil
+		return m, nil
 	case "ctrl+3":
 		m.field = fieldBranch
-		return m.applyPromptLabel(m.filterLabel()), nil
+		return m, nil
 	}
 	var cmd tea.Cmd
 	m.prompt, cmd = m.prompt.Update(msg)
@@ -237,7 +234,7 @@ func (m model) updateFilterPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
 // populated from the visible repos.
 func (m model) openCheckoutPrompt() (model, tea.Cmd) {
 	m.mode = modeCheckoutPrompt
-	m = m.applyPromptLabel("checkout: ")
+	m = m.applyPromptLabel(switchBranchLabel)
 	m.prompt.SetValue("")
 	m = m.recomputeSuggestions()
 	return m, m.prompt.Focus()
@@ -277,21 +274,30 @@ func (m model) updateCheckoutPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	return m, cmd
 }
 
-// openBranchPrompt enters the b prompt: empty draft, no autocomplete (you're
-// inventing a name).
+// openBranchPrompt enters the b prompt: empty draft. Existing branches are
+// surfaced as suggestions for reference (you're inventing a new name, but the
+// list shows neighbours to avoid collisions); Tab cycles them in. Picking an
+// existing name and pressing Enter will fail at the git layer, and the typed
+// error surfaces on the row like any other failure.
 func (m model) openBranchPrompt() (model, tea.Cmd) {
 	m.mode = modeBranchPrompt
-	m = m.applyPromptLabel("checkout -b: ")
+	m = m.applyPromptLabel(newBranchLabel)
 	m.prompt.SetValue("")
+	m = m.recomputeSuggestions()
 	return m, m.prompt.Focus()
 }
 
 // updateBranchPrompt handles keys with the b prompt focused. Enter runs
 // `checkout -b <name>` on the filtered repos and closes; ESC clears the draft
-// or — when empty — reverts and closes. No retrigger-close (same reason as the
-// c prompt: `b` is a typeable letter).
+// or — when empty — reverts and closes. Tab/shift+tab cycle branch suggestions
+// inline. No retrigger-close (same reason as the c prompt: `b` is a typeable
+// letter).
 func (m model) updateBranchPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	switch msg.String() {
+	case "tab":
+		return m.cycleSuggestion(1), nil
+	case "shift+tab":
+		return m.cycleSuggestion(-1), nil
 	case "enter":
 		name := strings.TrimSpace(m.prompt.Value())
 		if name == "" {
@@ -306,10 +312,12 @@ func (m model) updateBranchPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
 			return m.closePrompt(), nil
 		}
 		m.prompt.SetValue("")
+		m = m.recomputeSuggestions()
 		return m, nil
 	}
 	var cmd tea.Cmd
 	m.prompt, cmd = m.prompt.Update(msg)
+	m = m.recomputeSuggestions()
 	return m, cmd
 }
 
@@ -335,10 +343,10 @@ func (m model) applyPromptLabel(label string) model {
 	return m
 }
 
-// updateHelp handles keys with the help overlay open. F1 or ESC closes it.
+// updateHelp handles keys with the help overlay open. ? or ESC closes it.
 func (m model) updateHelp(msg tea.KeyPressMsg) model {
 	switch msg.String() {
-	case "f1", "esc":
+	case "?", "esc":
 		m.mode = modeList
 	}
 	return m
@@ -530,64 +538,78 @@ func (m model) View() tea.View {
 	if m.mode == modeHelp {
 		return tea.View{Content: helpContent(), AltScreen: true}
 	}
+	header := lipgloss.JoinVertical(lipgloss.Left, m.headerTop(), m.headerBottom())
 	list := m.listContent()
-	bar := m.bottomBar()
-
-	// The branch suggestion line, if any, sits on the row above the bar.
-	var middle []string
-	if m.mode == modeCheckoutPrompt && len(m.suggestions) > 0 {
-		middle = append(middle, m.suggestionLine())
-	}
 
 	if m.height > 0 {
-		listHeight := m.height - 1 - len(middle)
+		listHeight := m.height - 2
 		if listHeight < 1 {
 			listHeight = 1
 		}
 		listArea := lipgloss.NewStyle().Height(listHeight).Render(list)
-		parts := append([]string{listArea}, middle...)
-		parts = append(parts, bar)
-		return tea.View{Content: lipgloss.JoinVertical(lipgloss.Left, parts...), AltScreen: true}
+		return tea.View{Content: lipgloss.JoinVertical(lipgloss.Left, header, listArea), AltScreen: true}
 	}
-	parts := []string{list}
-	parts = append(parts, middle...)
-	parts = append(parts, bar)
-	return tea.View{Content: lipgloss.JoinVertical(lipgloss.Left, parts...), AltScreen: true}
+	return tea.View{Content: lipgloss.JoinVertical(lipgloss.Left, header, list), AltScreen: true}
 }
 
-// bottomBar is the always-visible row at the bottom: the active prompt or, when
-// no prompt is open, the committed filter (or empty); "F1 Help" pinned right.
-func (m model) bottomBar() string {
-	left := m.barLeft()
-	right := colorDim.Render("F1 Help")
-	if m.width <= 0 {
-		return left + "  " + right
-	}
-	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
-	if gap < 1 {
-		gap = 1
-	}
-	return left + strings.Repeat(" ", gap) + right
-}
-
-// barLeft is the left portion of the bottom bar: the prompt input while a
-// prompt is open, the committed filter status when not.
-func (m model) barLeft() string {
+// headerTop is row 1: the active prompt's input while a prompt is open, or the
+// committed filter status (label + value, with dim "none" when empty) when in
+// list mode.
+func (m model) headerTop() string {
 	switch m.mode {
 	case modeFilterPrompt, modeCheckoutPrompt, modeBranchPrompt:
 		return m.prompt.View()
 	}
 	if m.filter == "" {
-		return ""
+		return filterLabel + colorDim.Render("none")
 	}
-	return colorDim.Render(m.filterLabel() + m.filter)
+	return filterLabel + m.filter
 }
 
-// suggestionLine renders the c-prompt's autocomplete options, the highlighted
-// one (cycled by tab) reversed.
+// headerBottom is row 2: the filter-field mode chips when in list or filter
+// prompt mode, or the branch suggestion row when in a c/b prompt (dim
+// "(no matches)" if the draft filters them all out).
+func (m model) headerBottom() string {
+	switch m.mode {
+	case modeCheckoutPrompt, modeBranchPrompt:
+		return m.suggestionLine()
+	}
+	return m.modesLine()
+}
+
+// modesLine renders the C-1/2/3 chips with the active one bold + accent and
+// the others dim, separated by middle dots.
+func (m model) modesLine() string {
+	active := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
+	chips := []struct {
+		field filterField
+		text  string
+	}{
+		{fieldNameBranch, "C-1: name + branch"},
+		{fieldName, "C-2: name"},
+		{fieldBranch, "C-3: branch"},
+	}
+	parts := make([]string, len(chips))
+	for i, c := range chips {
+		if c.field == m.field {
+			parts[i] = active.Render(c.text)
+		} else {
+			parts[i] = colorDim.Render(c.text)
+		}
+	}
+	line := strings.Join(parts, " · ")
+	if m.width > 0 {
+		line = ansi.Truncate(line, m.width, "…")
+	}
+	return line
+}
+
+// suggestionLine renders the c/b-prompt's autocomplete options, the highlighted
+// one (cycled by tab) reversed. Falls back to a dim "(no matches)" hint when
+// the draft narrows the set to empty, so the row stays anchored.
 func (m model) suggestionLine() string {
 	if len(m.suggestions) == 0 {
-		return ""
+		return colorDim.Render("(no matches)")
 	}
 	selected := lipgloss.NewStyle().Reverse(true)
 	parts := make([]string, len(m.suggestions))

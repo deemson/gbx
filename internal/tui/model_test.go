@@ -65,11 +65,11 @@ func TestSummarySuccessIsEmpty(t *testing.T) {
 	require.Empty(t, m.repos[0].summary())
 }
 
-func TestF4OpensFilterPromptPreFilled(t *testing.T) {
+func TestCtrlFOpensFilterPromptPreFilled(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
-	// Pre-commit a filter so we can verify F4 re-opens with it pre-filled.
-	opened, _ := m.Update(keyF4)
+	// Pre-commit a filter so we can verify ctrl+f re-opens with it pre-filled.
+	opened, _ := m.Update(keyCtrlF)
 	m = opened.(model)
 	m = send(t, m, "foo")
 	applied, _ := m.Update(keyEnter)
@@ -77,23 +77,23 @@ func TestF4OpensFilterPromptPreFilled(t *testing.T) {
 	require.Equal(t, modeList, m.mode)
 	require.Equal(t, "foo", m.filter)
 
-	reopened, _ := m.Update(keyF4)
+	reopened, _ := m.Update(keyCtrlF)
 	m = reopened.(model)
 	require.Equal(t, modeFilterPrompt, m.mode)
 	require.Equal(t, "foo", m.prompt.Value()) // pre-filled with committed value
 }
 
-func TestF4WhileOpenRevertsAndCloses(t *testing.T) {
+func TestCtrlFWhileOpenRevertsAndCloses(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
-	opened, _ := m.Update(keyF4)
+	opened, _ := m.Update(keyCtrlF)
 	m = opened.(model)
 	m = send(t, m, "abc")
 	require.Equal(t, "abc", m.prompt.Value())
 
-	// F4 while open discards the draft and returns to list mode, keeping the
-	// previously committed filter (empty in this case) unchanged.
-	reverted, _ := m.Update(keyF4)
+	// ctrl+f while open discards the draft and returns to list mode, keeping
+	// the previously committed filter (empty in this case) unchanged.
+	reverted, _ := m.Update(keyCtrlF)
 	m = reverted.(model)
 	require.Equal(t, modeList, m.mode)
 	require.Empty(t, m.filter)
@@ -101,7 +101,7 @@ func TestF4WhileOpenRevertsAndCloses(t *testing.T) {
 
 func TestEscClearsDraftThenClosesOnEmpty(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
-	opened, _ := m.Update(keyF4)
+	opened, _ := m.Update(keyCtrlF)
 	m = opened.(model)
 	m = send(t, m, "abc")
 
@@ -122,14 +122,14 @@ func TestEnterEmptyDraftCommitsAndClearsCommittedFilter(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
 	// Commit a filter, then re-open and clear via ESC + Enter to commit empty.
-	opened, _ := m.Update(keyF4)
+	opened, _ := m.Update(keyCtrlF)
 	m = opened.(model)
 	m = send(t, m, "foo")
 	applied, _ := m.Update(keyEnter)
 	m = applied.(model)
 	require.Equal(t, "foo", m.filter)
 
-	reopened, _ := m.Update(keyF4)
+	reopened, _ := m.Update(keyCtrlF)
 	m = reopened.(model)
 	cleared, _ := m.Update(keyEsc) // draft was "foo" pre-filled → now ""
 	m = cleared.(model)
@@ -142,7 +142,7 @@ func TestEnterEmptyDraftCommitsAndClearsCommittedFilter(t *testing.T) {
 func TestEffectiveFilterUsesDraftWhileEditing(t *testing.T) {
 	m := newModel("x").addRepo("api-gateway", git.Repo{}).addRepo("billing", git.Repo{})
 
-	opened, _ := m.Update(keyF4)
+	opened, _ := m.Update(keyCtrlF)
 	m = opened.(model)
 	m = send(t, m, "api")
 
@@ -180,7 +180,7 @@ func TestQQuitsFromList(t *testing.T) {
 func TestQInsidePromptTypesIntoDraft(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
-	opened, _ := m.Update(keyF4)
+	opened, _ := m.Update(keyCtrlF)
 	m = opened.(model)
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
 	m = updated.(model)
@@ -189,16 +189,16 @@ func TestQInsidePromptTypesIntoDraft(t *testing.T) {
 	require.Equal(t, "q", m.prompt.Value())
 }
 
-func TestF1TogglesHelp(t *testing.T) {
+func TestQuestionTogglesHelp(t *testing.T) {
 	m := newModel("x").addRepo("a", git.Repo{})
 
-	opened, _ := m.Update(keyF1)
+	opened, _ := m.Update(keyQuestion)
 	require.Equal(t, modeHelp, opened.(model).mode)
 
-	closedByF1, _ := opened.(model).Update(keyF1)
-	require.Equal(t, modeList, closedByF1.(model).mode)
+	closedByQuestion, _ := opened.(model).Update(keyQuestion)
+	require.Equal(t, modeList, closedByQuestion.(model).mode)
 
-	reopened, _ := closedByF1.(model).Update(keyF1)
+	reopened, _ := closedByQuestion.(model).Update(keyQuestion)
 	closedByEsc, _ := reopened.(model).Update(keyEsc)
 	require.Equal(t, modeList, closedByEsc.(model).mode)
 }
@@ -214,7 +214,7 @@ func TestCOpensCheckoutPromptWithSuggestions(t *testing.T) {
 	require.Equal(t, []string{"feat", "main"}, m.suggestions) // visibleBranches, sorted
 }
 
-func TestBOpensBranchPromptWithoutSuggestions(t *testing.T) {
+func TestBOpensBranchPromptWithSuggestions(t *testing.T) {
 	m := newModel("x").addRepo("a", git.Repo{})
 	m = m.setBranches("a", []string{"main", "feat"})
 
@@ -222,7 +222,21 @@ func TestBOpensBranchPromptWithoutSuggestions(t *testing.T) {
 	m = opened.(model)
 
 	require.Equal(t, modeBranchPrompt, m.mode)
-	require.Empty(t, m.suggestions) // b prompt has no autocomplete
+	// Existing branches are shown as reference (avoid name collisions); Tab can
+	// cycle them in, though Enter on an existing name will fail at git layer.
+	require.Equal(t, []string{"feat", "main"}, m.suggestions)
+}
+
+func TestBranchTabCyclesSuggestions(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+	m = m.setBranches("a", []string{"main", "feat"})
+
+	opened, _ := m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
+	m = opened.(model)
+	tabbed, _ := m.Update(keyTab)
+	m = tabbed.(model)
+
+	require.Equal(t, "feat", m.prompt.Value()) // first sorted branch
 }
 
 func TestCheckoutTabCyclesBranchSuggestions(t *testing.T) {
@@ -289,29 +303,30 @@ func TestBranchEnterRunsCheckoutBranch(t *testing.T) {
 	require.NotNil(t, cmd)
 }
 
-func TestFieldToggleUpdatesPromptLabel(t *testing.T) {
+func TestFieldToggleChangesFieldButNotLabel(t *testing.T) {
 	m := newModel("x")
 	require.Equal(t, fieldNameBranch, m.field) // default
 
-	// List mode: ctrl+1/2/3 set the field silently (no prompt visible).
+	// List mode: ctrl+1/2/3 set the field silently — the modes row in the
+	// header reflects it, but the prompt label is no longer field-coupled.
 	name, _ := m.Update(ctrl2)
 	require.Equal(t, fieldName, name.(model).field)
 
-	// Opening the filter prompt then picks the field-aware label.
-	opened, _ := name.(model).Update(keyF4)
+	// Opening the filter prompt uses the constant "Filter: " label.
+	opened, _ := name.(model).Update(keyCtrlF)
 	m = opened.(model)
-	require.Equal(t, "name: ", m.prompt.Prompt)
+	require.Equal(t, filterLabel, m.prompt.Prompt)
 
-	// Toggling field while the prompt is open updates the label live.
+	// Toggling field while the prompt is open updates m.field; the label stays.
 	branch, _ := m.Update(ctrl3)
 	m = branch.(model)
 	require.Equal(t, fieldBranch, m.field)
-	require.Equal(t, "branch: ", m.prompt.Prompt)
+	require.Equal(t, filterLabel, m.prompt.Prompt)
 
 	back, _ := m.Update(ctrl1)
 	m = back.(model)
 	require.Equal(t, fieldNameBranch, m.field)
-	require.Equal(t, "filter: ", m.prompt.Prompt)
+	require.Equal(t, filterLabel, m.prompt.Prompt)
 }
 
 func TestBranchFieldFiltersOnBranch(t *testing.T) {
@@ -321,7 +336,7 @@ func TestBranchFieldFiltersOnBranch(t *testing.T) {
 
 	field, _ := m.Update(ctrl3) // switch field BEFORE opening the prompt
 	m = field.(model)
-	opened, _ := m.Update(keyF4)
+	opened, _ := m.Update(keyCtrlF)
 	m = opened.(model)
 	m = send(t, m, "main")
 
@@ -333,7 +348,7 @@ func TestBranchFieldFiltersOnBranch(t *testing.T) {
 func TestExcludeHidesMatchingRepos(t *testing.T) {
 	m := newModel("x").addRepo("api-gateway", git.Repo{}).addRepo("billing", git.Repo{})
 
-	opened, _ := m.Update(keyF4)
+	opened, _ := m.Update(keyCtrlF)
 	m = opened.(model)
 	m = send(t, m, "!api")
 
@@ -345,7 +360,7 @@ func TestExcludeHidesMatchingRepos(t *testing.T) {
 func TestRefreshOnRTargetsFiltered(t *testing.T) {
 	m := newModel("x").addRepo("alpha", git.Repo{}).addRepo("beta", git.Repo{})
 
-	opened, _ := m.Update(keyF4)
+	opened, _ := m.Update(keyCtrlF)
 	m = opened.(model)
 	m = send(t, m, "alpha")
 	applied, _ := m.Update(keyEnter)
@@ -354,7 +369,7 @@ func TestRefreshOnRTargetsFiltered(t *testing.T) {
 	require.NotNil(t, cmd)
 
 	// A filter that matches nothing schedules no work (empty batch is nil).
-	opened, _ = m.Update(keyF4)
+	opened, _ = m.Update(keyCtrlF)
 	m = opened.(model)
 	m = send(t, m, "zzz") // overrides pre-fill
 	applied, _ = m.Update(keyEnter)
@@ -368,7 +383,7 @@ func TestColumnWidthsPinnedToFullList(t *testing.T) {
 	m := newModel("x").addRepo(short, git.Repo{}).addRepo(long, git.Repo{})
 
 	// Narrow the visible set to just the short repo via the filter prompt.
-	opened, _ := m.Update(keyF4)
+	opened, _ := m.Update(keyCtrlF)
 	m = opened.(model)
 	m = send(t, m, short)
 	applied, _ := m.Update(keyEnter)

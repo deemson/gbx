@@ -7,15 +7,17 @@ of git commands across them.
 
 - **A fixed command set, not free-form.** List mode is the default — letter keys
   dispatch typed `Repo` methods directly on the filtered repos: `r` refresh,
-  `f` fetch, `p` pull, `c` checkout (opens an arg prompt with branch autocomplete
+  `f` fetch, `p` pull, `c` Switch Branch (arg prompt with branch autocomplete
   drawn from the union across the visible repos; `tab`/`shift+tab` cycle), `b`
-  checkout -b (arg prompt, no autocomplete). `F1` toggles the help overlay; `F4`
-  opens the filter prompt (Enter commits the draft to the active filter; ESC
-  clears the draft, or — when already empty — reverts and closes; F4 while open
-  reverts). `q` (or `ctrl+c` anywhere) quits. Per-repo result is a `⟳/✓/✗`
-  glyph **plus a one-liner** that, on failure, is the typed error
-  (`err.Error()`); success shows nothing. The error is also logged to
-  `~/gbx.log`. There is **no output pane** — the typed errors are the surface.
+  New Branch (arg prompt; same suggestion source as `c` for reference, Tab
+  cycles — picking an existing name fails on Enter and the typed error surfaces
+  on the row). `?` toggles the help overlay; `ctrl+f` opens the filter prompt
+  (Enter commits the draft to the active filter; ESC clears the draft, or —
+  when already empty — reverts and closes; ctrl+f while open reverts). `q` (or
+  `ctrl+c` anywhere) quits. Per-repo result is a `⟳/✓/✗` glyph **plus a
+  one-liner** that, on failure, is the typed error (`err.Error()`); success
+  shows nothing. The error is also logged to `~/gbx.log`. There is **no output
+  pane** — the typed errors are the surface.
 - **Discovery:** scan the *immediate* subdirectories of one root dir (CLI arg,
   default cwd); each that is a git repo becomes a row. No recursion, no config
   file.
@@ -46,15 +48,20 @@ of git commands across them.
   shell out elsewhere.
 - **The TUI is htop-style:** list mode is the default — letter keys dispatch
   git actions directly on the filtered repos and `ctrl+1/2/3` toggle the filter
-  field (name+branch / name / branch). `F4` opens a transient filter prompt at
-  the bottom row; while it's open, the draft live-narrows the visible rows
-  (Enter commits to `m.filter`). `c` and `b` open argument prompts with the same
-  state machine, minus the retrigger-close — `c`/`b` are typeable in
-  refs/branch names. `F1` toggles the help overlay (alt screen). The bottom bar
-  shows the committed filter on the left (or empty when none) and `F1 Help`
-  pinned to the right corner; while a prompt is open, the prompt input replaces
-  the left half. The binding slices in `internal/tui/help.go` are the single
-  source of truth for what `F1` documents.
+  field (name+branch / name / branch). The app has a **two-row header at the
+  top** that's always visible: row 1 is `Filter: <value>` (dim `none` when
+  empty) and row 2 is the field chips `C-1: name + branch · C-2: name · C-3:
+  branch` with the active chip bold + accent. `ctrl+f` opens the filter
+  prompt — row 1 becomes the live-editable draft and live-narrows the visible
+  rows (Enter commits to `m.filter`). `c` opens the Switch Branch prompt
+  (`Switch Branch:` on row 1, branch suggestions on row 2, dim `(no matches)`
+  when the draft narrows them to empty); `b` opens the New Branch prompt
+  (`New Branch:` on row 1, same suggestion source as reference). `c`/`b` lack
+  the retrigger-close — their letters are typeable in refs/branch names.
+  `ctrl+1/2/3` are unbound in `c`/`b` prompts (field stays sticky). `?`
+  toggles the help overlay (alt screen). There is no bottom bar. The binding
+  slices in `internal/tui/help.go` are the single source of truth for what `?`
+  documents.
 - **Test the TUI end-to-end** with the `testProgram` harness (`internal/tui`,
   `testhelper_test.go`): it drives a real `tea.Program`, inject keys with
   `send`/`sendKey`, assert rendered output with `waitForContent`. Build fixtures

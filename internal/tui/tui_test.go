@@ -12,15 +12,15 @@ import (
 )
 
 var (
-	keyTab      = tea.KeyPressMsg{Code: tea.KeyTab}
-	keyShiftTab = tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
-	keyEnter    = tea.KeyPressMsg{Code: tea.KeyEnter}
-	keyEsc      = tea.KeyPressMsg{Code: tea.KeyEscape}
-	keyF1       = tea.KeyPressMsg{Code: tea.KeyF1}
-	keyF4       = tea.KeyPressMsg{Code: tea.KeyF4}
-	ctrl1       = tea.KeyPressMsg{Code: '1', Mod: tea.ModCtrl}
-	ctrl2       = tea.KeyPressMsg{Code: '2', Mod: tea.ModCtrl}
-	ctrl3       = tea.KeyPressMsg{Code: '3', Mod: tea.ModCtrl}
+	keyTab       = tea.KeyPressMsg{Code: tea.KeyTab}
+	keyShiftTab  = tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+	keyEnter     = tea.KeyPressMsg{Code: tea.KeyEnter}
+	keyEsc       = tea.KeyPressMsg{Code: tea.KeyEscape}
+	keyQuestion  = tea.KeyPressMsg{Code: '?', Text: "?"}
+	keyCtrlF     = tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl}
+	ctrl1        = tea.KeyPressMsg{Code: '1', Mod: tea.ModCtrl}
+	ctrl2        = tea.KeyPressMsg{Code: '2', Mod: tea.ModCtrl}
+	ctrl3        = tea.KeyPressMsg{Code: '3', Mod: tea.ModCtrl}
 )
 
 func mkRepo(t *testing.T, dir, name string) gitest.Repo {
@@ -187,8 +187,8 @@ func TestHelpOverlayShowsBindings(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("proj")
 
-	tp.sendKey(keyF1)
-	tp.waitForContent("gbx — keys", "list mode", "F4", "filter prompt")
+	tp.sendKey(keyQuestion)
+	tp.waitForContent("gbx — keys", "list mode", "ctrl+f", "filter prompt")
 }
 
 func TestRefreshPicksUpExternalChange(t *testing.T) {
@@ -214,7 +214,7 @@ func TestFilterExcludingAllShowsNoMatches(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("apple", "banana")
 
-	tp.sendKey(keyF4)
+	tp.sendKey(keyCtrlF)
 	tp.send("zzzz")
 	tp.sendKey(keyEnter)
 	tp.waitForContent("no matches")
