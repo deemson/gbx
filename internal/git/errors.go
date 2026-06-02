@@ -16,18 +16,18 @@ var (
 	ErrDotGitOpen = errors.New("attempt to open .git/ as a repository")
 
 	ErrRepositoryHasNoCommits = errors.New("repository has no commits")
-	ErrUnknownPathspec        = errors.New("unknown pathspec")
+	ErrUnknownPathspec        = errors.New("no such branch")
 
-	ErrLocalChangesOverwritten = errors.New("local changes would be overwritten by checkout")
-	ErrUntrackedOverwritten    = errors.New("untracked files would be overwritten by checkout")
+	ErrLocalChangesOverwritten = errors.New("commit or stash changes first")
+	ErrUntrackedOverwritten    = errors.New("untracked files in the way")
 
 	ErrBranchAlreadyExists = errors.New("branch already exists")
 
-	ErrNoRemote = errors.New("no remote")
+	ErrNoRemote = errors.New("no remote configured")
 
-	ErrNoUpstream         = errors.New("no tracking information for the current branch")
-	ErrNotFastForward     = errors.New("not possible to fast-forward")
-	ErrMergeRefNotFetched = errors.New("configured upstream ref was not fetched from the remote")
+	ErrNoUpstream         = errors.New("branch tracks no remote")
+	ErrNotFastForward     = errors.New("diverged, can't fast-forward")
+	ErrMergeRefNotFetched = errors.New("upstream missing, fetch first")
 )
 
 type TokenParseError struct {
