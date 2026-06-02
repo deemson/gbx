@@ -73,13 +73,14 @@ func (rs repoStatus) clean() bool {
 // has no upstream, otherwise the non-zero ahead/behind arrows (nothing when in
 // sync). The branch name itself keeps the default foreground.
 func (rs repoStatus) branchField() string {
+	name := branchStyle(rs.branch).Render(rs.branch)
 	if !rs.hasUpstream {
-		return rs.branch + " " + colorDim.Render("⌀")
+		return name + " " + colorDim.Render("⌀")
 	}
 	if sync := rs.sync(); sync != "" {
-		return rs.branch + " " + colorCyan.Render(sync)
+		return name + " " + colorCyan.Render(sync)
 	}
-	return rs.branch
+	return name
 }
 
 // sync is the ahead/behind arrows with zero sides hidden, empty when in sync.
