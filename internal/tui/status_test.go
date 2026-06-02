@@ -53,11 +53,11 @@ func TestRepoStatusFields(t *testing.T) {
 
 	cleanInSync := newRepoStatus(git.Status{Branch: "main", Upstream: "origin/main"})
 	require.Equal(t, "main", ansi.Strip(cleanInSync.branchField()))
-	require.Equal(t, "✓", ansi.Strip(cleanInSync.stateField()))
+	require.Equal(t, "", ansi.Strip(cleanInSync.stateField()))
 
 	noUpstream := newRepoStatus(git.Status{Branch: "dev"})
 	require.Equal(t, "dev ⌀", ansi.Strip(noUpstream.branchField()))
-	require.Equal(t, "✓", ansi.Strip(noUpstream.stateField()))
+	require.Equal(t, "", ansi.Strip(noUpstream.stateField()))
 
 	conflict := newRepoStatus(git.Status{
 		Branch:   "feat",

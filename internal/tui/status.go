@@ -94,11 +94,11 @@ func (rs repoStatus) sync() string {
 	return s
 }
 
-// stateField is a green ✓ when the tree is clean, otherwise the non-empty
-// change buckets, each a colored glyph+count, in a stable order.
+// stateField is blank when the tree is clean (success is silent), otherwise the
+// non-empty change buckets, each a colored glyph+count, in a stable order.
 func (rs repoStatus) stateField() string {
 	if rs.clean() {
-		return colorGreen.Render("✓")
+		return ""
 	}
 	var segs []string
 	if rs.modified > 0 {

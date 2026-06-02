@@ -75,7 +75,7 @@ func TestRepoShowsCleanState(t *testing.T) {
 	branch := repo.BranchShowCurrent()
 
 	tp := runTestProgram(t, dir)
-	tp.waitForContent("withcommit", branch, "✓") // clean tree → check glyph
+	tp.waitForContent("withcommit", branch) // clean tree → silent state column
 }
 
 func TestRepoShowsChangedCount(t *testing.T) {
@@ -180,9 +180,10 @@ func TestRefreshPicksUpExternalChange(t *testing.T) {
 	repo.SetupCommitConfig()
 	repo.WriteFileAdd("a", "1")
 	repo.Commit("c1")
+	branch := repo.BranchShowCurrent()
 
 	tp := runTestProgram(t, dir)
-	tp.waitForContent("proj", "✓")
+	tp.waitForContent("proj", branch) // branch column confirms initial status loaded
 
 	repo.WriteFileAdd("b", "2") // change made after the initial status load
 	tp.send("r")
