@@ -133,7 +133,7 @@ func statusCmd(name string, repo git.Repo) tea.Cmd {
 		s, err := repo.Status(context.Background())
 		if err != nil {
 			log.Error().Err(err).Str("name", name).Msg("failed to load status")
-			return nil
+			return loadFailedMsg{name: name, err: err}
 		}
 		return statusLoadedMsg{name: name, status: newRepoStatus(s)}
 	}

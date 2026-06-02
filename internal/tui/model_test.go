@@ -5,11 +5,117 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/deemson/gbx/internal/git"
 	"github.com/stretchr/testify/require"
 )
+
+// drive applies a sequence of messages to the model in order.
+func drive(t *testing.T, m model, msgs ...tea.Msg) model {
+	t.Helper()
+	for _, msg := range msgs {
+		u, _ := m.Update(msg)
+		m = u.(model)
+	}
+	return m
+}
+
+func TestRepoFoundStartsLoadingCycleAndSpins(t *testing.T) {
+	m := drive(t, newModel("x"), repoFoundMsg{name: "r", repo: git.Repo{}})
+
+	require.Equal(t, 3, m.repos[0].loading) // status + diff + branches in flight
+	require.True(t, m.spinning)
+	require.Equal(t, m.spinner.View(), m.gutterCell(m.repos[0])) // busy row spins
+}
+
+func TestLoadCycleCompletesToBlankGutter(t *testing.T) {
+	m := drive(t, newModel("x"),
+		repoFoundMsg{name: "r", repo: git.Repo{}},
+		statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, branchesLoadedMsg{name: "r"})
+
+	require.Equal(t, 0, m.repos[0].loading)
+	require.Empty(t, ansi.Strip(m.gutterCell(m.repos[0]))) // settled, no error → blank
+}
+
+func TestLoadFailureSettlesToCross(t *testing.T) {
+	m := drive(t, newModel("x"),
+		repoFoundMsg{name: "r", repo: git.Repo{}},
+		statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"},
+		loadFailedMsg{name: "r", err: errors.New("read failed")})
+
+	require.Equal(t, 0, m.repos[0].loading)
+	require.Equal(t, "✗", ansi.Strip(m.gutterCell(m.repos[0])))
+	require.Equal(t, "read failed", m.repos[0].summary())
+}
+
+func TestRefreshClearsPriorLoadError(t *testing.T) {
+	// First cycle settles with a read failure → ✗.
+	m := drive(t, newModel("x"),
+		repoFoundMsg{name: "r", repo: git.Repo{}},
+		loadFailedMsg{name: "r", err: errors.New("boom")},
+		statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"})
+	require.NotNil(t, m.repos[0].loadErr)
+
+	// `r` dispatches a fresh cycle, which clears the cycle's loadErr up front.
+	m = drive(t, m, tea.KeyPressMsg{Code: 'r', Text: "r"})
+	require.Equal(t, 3, m.repos[0].loading)
+	require.Nil(t, m.repos[0].loadErr)
+
+	// A fully successful cycle leaves the gutter blank.
+	m = drive(t, m, statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, branchesLoadedMsg{name: "r"})
+	require.Empty(t, ansi.Strip(m.gutterCell(m.repos[0])))
+}
+
+func TestRefreshClearsCommandError(t *testing.T) {
+	// A repo settled with a failed command shows ✗ + one-liner.
+	m := drive(t, newModel("x"),
+		repoFoundMsg{name: "r", repo: git.Repo{}},
+		statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, branchesLoadedMsg{name: "r"},
+		cmdDoneMsg{name: "r", err: errors.New("pull boom")},
+		statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, branchesLoadedMsg{name: "r"})
+	require.Equal(t, cmdFailed, m.repos[0].cmd)
+	require.Equal(t, "pull boom", m.repos[0].summary())
+
+	// `r` wipes the command error; a successful cycle leaves the gutter blank.
+	m = drive(t, m, tea.KeyPressMsg{Code: 'r', Text: "r"})
+	require.Nil(t, m.repos[0].cmdErr)
+	require.Equal(t, cmdNone, m.repos[0].cmd)
+	m = drive(t, m, statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, branchesLoadedMsg{name: "r"})
+	require.Empty(t, ansi.Strip(m.gutterCell(m.repos[0])))
+	require.Empty(t, m.repos[0].summary())
+}
+
+func TestGutterSpinnerWinsWhileBusy(t *testing.T) {
+	// A failed command fires a follow-up refresh; the row keeps spinning through
+	// it (Q7) and only settles to ✗ once the reads finish.
+	m := newModel("x").addRepo("r", git.Repo{})
+	m.repos[0].cmd = cmdFailed
+	m.repos[0].cmdErr = errors.New("boom")
+	m.repos[0].loading = 1
+
+	require.Equal(t, m.spinner.View(), m.gutterCell(m.repos[0]))
+}
+
+func TestCmdErrorWinsOneLiner(t *testing.T) {
+	m := newModel("x").addRepo("r", git.Repo{})
+	m.repos[0].cmdErr = errors.New("cmd boom")
+	m.repos[0].loadErr = errors.New("load boom")
+
+	require.Equal(t, "cmd boom", m.repos[0].summary())
+}
+
+func TestSpinnerStopsWhenIdle(t *testing.T) {
+	m := newModel("x").addRepo("r", git.Repo{})
+	m.spinning = true
+
+	updated, cmd := m.Update(spinner.TickMsg{})
+	m = updated.(model)
+
+	require.False(t, m.spinning) // nothing busy → tick loop stops
+	require.Nil(t, cmd)
+}
 
 // These tests drive the model directly, bypassing the terminal renderer (whose
 // differential, cursor-positioned output makes in-place state changes invisible

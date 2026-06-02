@@ -14,10 +14,15 @@ of git commands across them.
   on the row). `?` toggles the help overlay; `ctrl+f` opens the filter prompt
   (Enter commits the draft to the active filter; ESC clears the draft, or —
   when already empty — reverts and closes; ctrl+f while open reverts). `q` (or
-  `ctrl+c` anywhere) quits. Per-repo result is a `⟳/✓/✗` glyph **plus a
-  one-liner** that, on failure, is the typed error (`err.Error()`); success
-  shows nothing. The error is also logged to `~/gbx.log`. There is **no output
-  pane** — the typed errors are the surface.
+  `ctrl+c` anywhere) quits. Each row has a **2-wide left gutter** before the
+  name: a dim spinner while the row is busy (reading status/diff/branches **or**
+  running a command), a red `✗` once it settles with an error, blank otherwise —
+  **success is silent** (no `✓`). A failed row also gets a **one-liner** that is
+  the typed error (`err.Error()`); the command error wins over a load error. An
+  explicit `r` refresh clears a settled error (gutter + one-liner) before
+  re-reading; a command's own follow-up refresh keeps it. The error is also
+  logged to `~/gbx.log`. There is **no output pane** — the typed errors are the
+  surface.
 - **Discovery:** scan the *immediate* subdirectories of one root dir (CLI arg,
   default cwd); each that is a git repo becomes a row. No recursion, no config
   file.
@@ -76,7 +81,7 @@ of git commands across them.
   (drive `model.Update` directly, inspect state), as in `model_test.go`.
 - **Logging:** zerolog → `~/gbx.log` (the TUI owns stdout). Each command's
   outcome (the typed error, or success) is logged here, in addition to its in-app
-  surface (the row glyph + error one-liner). Tests discard logs (see `TestMain`).
+  surface (the row's gutter `✗` + error one-liner). Tests discard logs (see `TestMain`).
 
 ## Build / run / test
 

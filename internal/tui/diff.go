@@ -38,7 +38,7 @@ func diffCmd(name string, repo git.Repo) tea.Cmd {
 		d, err := repo.DiffNumStatHead(context.Background())
 		if err != nil && !errors.Is(err, git.ErrRepositoryHasNoCommits) {
 			log.Error().Err(err).Str("name", name).Msg("failed to load diff")
-			return nil
+			return loadFailedMsg{name: name, err: err}
 		}
 		var lc lineChanges
 		for _, p := range d.Paths {

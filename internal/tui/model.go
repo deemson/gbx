@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -22,6 +23,21 @@ type repoEntry struct {
 	branches []string     // nil until loaded; feeds checkout autocomplete
 	cmd      cmdState
 	cmdErr   error // last command's error; nil on success. Drives the row one-liner.
+
+	// loading counts the in-flight status/diff/branches reads for this repo;
+	// >0 means the row is busy reading and spins. loadErr is the last *load
+	// cycle's* settled error: reset to nil when a cycle is dispatched, written
+	// by any failing read, read once loading hits 0.
+	loading int
+	loadErr error
+}
+
+// loadFailedMsg signals that one of a repo's status/diff/branches reads failed.
+// It decrements the in-flight counter (like the *LoadedMsg success path) and
+// records the error as the cycle's loadErr, so the row can settle to ✗.
+type loadFailedMsg struct {
+	name string
+	err  error
 }
 
 // uiMode is which screen has key focus. modeList is the default — letter keys
@@ -69,6 +85,13 @@ type model struct {
 	// version defaults to "dev"; release builds override it via WithVersion.
 	version string
 	pid     int
+
+	// spinner is the single shared loading spinner rendered in every busy row's
+	// left gutter. spinning guards its tick loop: the tick is kicked once when
+	// work starts and stops itself when nothing is busy (see kickSpinner / the
+	// spinner.TickMsg handler), so an idle app doesn't redraw 12×/second.
+	spinner  spinner.Model
+	spinning bool
 }
 
 func newModel(dir string) model {
@@ -77,12 +100,16 @@ func newModel(dir string) model {
 	// A non-zero width is required up front: textinput truncates the placeholder
 	// to Width()+1 runes. Resized on the first WindowSizeMsg.
 	p.SetWidth(40)
+	sp := spinner.New()
+	sp.Spinner = spinner.MiniDot
+	sp.Style = colorDim
 	return model{
 		dir:       dir,
 		prompt:    p,
 		suggIndex: -1,
 		version:   "dev",
 		pid:       os.Getpid(),
+		spinner:   sp,
 	}
 }
 
@@ -114,22 +141,38 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 	case repoFoundMsg:
-		return m.addRepo(msg.name, msg.repo), tea.Batch(
-			statusCmd(msg.name, msg.repo), diffCmd(msg.name, msg.repo), branchesCmd(msg.name, msg.repo))
+		m = m.addRepo(msg.name, msg.repo).startLoad(msg.name)
+		var tick tea.Cmd
+		m, tick = m.kickSpinner()
+		return m, tea.Batch(
+			statusCmd(msg.name, msg.repo), diffCmd(msg.name, msg.repo), branchesCmd(msg.name, msg.repo), tick)
 	case statusLoadedMsg:
-		return m.setStatus(msg.name, msg.status), nil
+		return m.setStatus(msg.name, msg.status).loadDone(msg.name, nil), nil
 	case diffLoadedMsg:
-		return m.setDiff(msg.name, msg.changes), nil
+		return m.setDiff(msg.name, msg.changes).loadDone(msg.name, nil), nil
 	case branchesLoadedMsg:
-		m = m.setBranches(msg.name, msg.branches)
+		m = m.setBranches(msg.name, msg.branches).loadDone(msg.name, nil)
 		if m.mode == modeCheckoutPrompt || m.mode == modeBranchPrompt {
 			m = m.recomputeSuggestions()
 		}
 		return m, nil
+	case loadFailedMsg:
+		return m.loadDone(msg.name, msg.err), nil
+	case spinner.TickMsg:
+		if !m.anyBusy() {
+			m.spinning = false
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
 	case cmdDoneMsg:
 		m = m.setCmdDone(msg)
 		if repo, ok := m.repoByName(msg.name); ok {
-			return m, tea.Batch(statusCmd(msg.name, repo), diffCmd(msg.name, repo), branchesCmd(msg.name, repo))
+			m = m.startLoad(msg.name)
+			var tick tea.Cmd
+			m, tick = m.kickSpinner()
+			return m, tea.Batch(statusCmd(msg.name, repo), diffCmd(msg.name, repo), branchesCmd(msg.name, repo), tick)
 		}
 		return m, nil
 	}
@@ -371,7 +414,7 @@ func (m model) effectiveFilter() string {
 }
 
 // runOnFiltered marks every repo currently matching the filter as running and
-// fires cmdFor against each.
+// fires cmdFor against each, kicking the spinner for the running rows.
 func (m model) runOnFiltered(cmdFor func(name string, repo git.Repo) tea.Cmd) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	for _, i := range m.matchedIndexes() {
@@ -379,7 +422,82 @@ func (m model) runOnFiltered(cmdFor func(name string, repo git.Repo) tea.Cmd) (t
 		m.repos[i].cmdErr = nil
 		cmds = append(cmds, cmdFor(m.repos[i].name, m.repos[i].repo))
 	}
-	return m, tea.Batch(cmds...)
+	if len(cmds) == 0 {
+		return m, nil
+	}
+	var tick tea.Cmd
+	m, tick = m.kickSpinner()
+	return m, tea.Batch(append(cmds, tick)...)
+}
+
+// startLoad opens a load cycle for the named repo: bumps the in-flight counter
+// by the three reads about to fire and clears the cycle's loadErr so a prior
+// failure doesn't linger past a fresh, successful read.
+func (m model) startLoad(name string) model {
+	for i := range m.repos {
+		if m.repos[i].name == name {
+			m.repos[i].loading += 3
+			m.repos[i].loadErr = nil
+			break
+		}
+	}
+	return m
+}
+
+// loadDone records one finished read for the named repo: decrements the
+// in-flight counter and, on failure, records the error as the cycle's loadErr
+// (read once the counter settles to 0).
+func (m model) loadDone(name string, loadErr error) model {
+	for i := range m.repos {
+		if m.repos[i].name == name {
+			if m.repos[i].loading > 0 {
+				m.repos[i].loading--
+			}
+			if loadErr != nil {
+				m.repos[i].loadErr = loadErr
+			}
+			break
+		}
+	}
+	return m
+}
+
+// clearCmdError forgets the named repo's last command outcome, so an explicit
+// `r` refresh wipes a stale ✗ and its one-liner. The post-command auto-refresh
+// uses startLoad directly and does not call this, so a just-failed command's
+// error survives its own follow-up reads.
+func (m model) clearCmdError(name string) model {
+	for i := range m.repos {
+		if m.repos[i].name == name {
+			m.repos[i].cmd = cmdNone
+			m.repos[i].cmdErr = nil
+			break
+		}
+	}
+	return m
+}
+
+// anyBusy reports whether any repo is reading or has a command in flight — the
+// condition under which the spinner should keep ticking.
+func (m model) anyBusy() bool {
+	for i := range m.repos {
+		if m.repos[i].loading > 0 || m.repos[i].cmd == cmdRunning {
+			return true
+		}
+	}
+	return false
+}
+
+// kickSpinner starts the spinner tick loop if it isn't already running. The
+// spinning guard keeps concurrent commands/loads from stacking parallel tick
+// chains (which would spin too fast); the loop stops itself on the first
+// TickMsg seen while nothing is busy.
+func (m model) kickSpinner() (model, tea.Cmd) {
+	if m.spinning {
+		return m, nil
+	}
+	m.spinning = true
+	return m, m.spinner.Tick
 }
 
 // matchedIndexes returns the repo indexes passing the filter, ranked best-first.
@@ -412,9 +530,15 @@ func (m model) matched() []repoEntry {
 func (m model) refreshFiltered() (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	for _, r := range m.matched() {
+		m = m.startLoad(r.name).clearCmdError(r.name)
 		cmds = append(cmds, statusCmd(r.name, r.repo), diffCmd(r.name, r.repo), branchesCmd(r.name, r.repo))
 	}
-	return m, tea.Batch(cmds...)
+	if len(cmds) == 0 {
+		return m, nil
+	}
+	var tick tea.Cmd
+	m, tick = m.kickSpinner()
+	return m, tea.Batch(append(cmds, tick)...)
 }
 
 // addRepo inserts a discovered repo and keeps the list sorted by name.
@@ -660,6 +784,19 @@ func (m model) suggestionLine() string {
 	return line
 }
 
+// gutterCell is a row's 2-wide left indicator: the dim spinner while the row is
+// busy (reading or running a command), a red ✗ once it has settled with a
+// command or load error, and blank otherwise (success is silent).
+func (m model) gutterCell(r repoEntry) string {
+	if r.loading > 0 || r.cmd == cmdRunning {
+		return m.spinner.View()
+	}
+	if r.cmdErr != nil || r.loadErr != nil {
+		return colorRed.Render("✗")
+	}
+	return ""
+}
+
 // listContent renders the repo rows (or an empty-state line) as a single block.
 func (m model) listContent() string {
 	if len(m.repos) == 0 {
@@ -684,21 +821,19 @@ func (m model) listContent() string {
 			stateWidth = w
 		}
 	}
+	gutterCol := lipgloss.NewStyle().Width(2) // spinner / ✗ slot, 1 glyph + 1 pad
 	nameCol := lipgloss.NewStyle().Width(nameWidth)
 	branchCol := lipgloss.NewStyle().Width(branchWidth)
 	stateCol := lipgloss.NewStyle().Width(stateWidth)
 
 	rows := make([]string, len(matched))
 	for i, r := range matched {
-		cols := []string{nameCol.Render(r.name), "  ", branchCol.Render(branchText(r)), "  ", stateCol.Render(stateText(r))}
+		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(r.name), "  ", branchCol.Render(branchText(r)), "  ", stateCol.Render(stateText(r))}
 		switch {
 		case r.diff == nil:
 			cols = append(cols, "  ", "...") // line changes not loaded yet
 		case !r.diff.empty():
 			cols = append(cols, "  ", r.diff.String()) // hidden entirely when +0 -0
-		}
-		if g := r.cmd.glyph(); g != "" {
-			cols = append(cols, "  ", g)
 		}
 		if s := r.summary(); s != "" {
 			prefix := lipgloss.JoinHorizontal(lipgloss.Top, cols...)

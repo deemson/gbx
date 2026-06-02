@@ -21,7 +21,7 @@ func branchesCmd(name string, repo git.Repo) tea.Cmd {
 		branches, err := repo.Branches(context.Background())
 		if err != nil {
 			log.Error().Err(err).Str("name", name).Msg("failed to load branches")
-			return nil
+			return loadFailedMsg{name: name, err: err}
 		}
 		return branchesLoadedMsg{name: name, branches: branches}
 	}

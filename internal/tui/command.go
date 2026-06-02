@@ -15,8 +15,9 @@ type cmdDoneMsg struct {
 	err  error
 }
 
-// cmdState is the result state of the last command run on a repo, rendered as a
-// glyph in the row's result cell.
+// cmdState is the result state of the last command run on a repo. It drives the
+// left-gutter indicator: cmdRunning spins, cmdFailed settles to ✗, cmdOK/cmdNone
+// are blank (success is silent).
 type cmdState int
 
 const (
@@ -26,25 +27,15 @@ const (
 	cmdFailed
 )
 
-func (c cmdState) glyph() string {
-	switch c {
-	case cmdRunning:
-		return colorYellow.Render("⟳")
-	case cmdOK:
-		return colorGreen.Render("✓")
-	case cmdFailed:
-		return colorRed.Render("✗")
-	default:
-		return ""
-	}
-}
-
-// summary is the one-liner shown after a command: the typed error on failure
-// (the whole point of the strict command set — errors are known), nothing on
-// success or while running.
+// summary is the one-liner shown after the columns: the typed command error if
+// one is set, else the last load cycle's error, else nothing. The command error
+// wins so a failed command's reason isn't masked by its follow-up refresh.
 func (r repoEntry) summary() string {
-	if r.cmd == cmdFailed && r.cmdErr != nil {
+	if r.cmdErr != nil {
 		return r.cmdErr.Error()
+	}
+	if r.loadErr != nil {
+		return r.loadErr.Error()
 	}
 	return ""
 }

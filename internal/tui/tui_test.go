@@ -12,15 +12,15 @@ import (
 )
 
 var (
-	keyTab       = tea.KeyPressMsg{Code: tea.KeyTab}
-	keyShiftTab  = tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
-	keyEnter     = tea.KeyPressMsg{Code: tea.KeyEnter}
-	keyEsc       = tea.KeyPressMsg{Code: tea.KeyEscape}
-	keyQuestion  = tea.KeyPressMsg{Code: '?', Text: "?"}
-	keyCtrlF     = tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl}
-	ctrl1        = tea.KeyPressMsg{Code: '1', Mod: tea.ModCtrl}
-	ctrl2        = tea.KeyPressMsg{Code: '2', Mod: tea.ModCtrl}
-	ctrl3        = tea.KeyPressMsg{Code: '3', Mod: tea.ModCtrl}
+	keyTab      = tea.KeyPressMsg{Code: tea.KeyTab}
+	keyShiftTab = tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+	keyEnter    = tea.KeyPressMsg{Code: tea.KeyEnter}
+	keyEsc      = tea.KeyPressMsg{Code: tea.KeyEscape}
+	keyQuestion = tea.KeyPressMsg{Code: '?', Text: "?"}
+	keyCtrlF    = tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl}
+	ctrl1       = tea.KeyPressMsg{Code: '1', Mod: tea.ModCtrl}
+	ctrl2       = tea.KeyPressMsg{Code: '2', Mod: tea.ModCtrl}
+	ctrl3       = tea.KeyPressMsg{Code: '3', Mod: tea.ModCtrl}
 )
 
 func mkRepo(t *testing.T, dir, name string) gitest.Repo {
@@ -88,34 +88,6 @@ func TestRepoShowsChangedCount(t *testing.T) {
 
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("dirty", "✚1") // one staged-added file
-}
-
-func TestRunPullSuccessShowsCheck(t *testing.T) {
-	dir := t.TempDir()
-
-	remoteDir := t.TempDir()
-	gitest.InitBare(t, remoteDir)
-
-	producer := gitest.Init(t, t.TempDir())
-	producer.RemoteAdd("origin", remoteDir)
-	producer.SetupCommitConfig()
-	producer.WriteFileAdd("file", "v1\n")
-	producer.Commit("c1")
-	producer.PushSetUpstream("origin", producer.BranchShowCurrent())
-
-	consumer := gitest.Clone(t, remoteDir, filepath.Join(dir, "consumer"))
-
-	producer.WriteFileAdd("file", "v1\nv2\n")
-	producer.Commit("c2")
-	producer.Push()
-	consumer.Fetch()
-
-	tp := runTestProgram(t, dir)
-	tp.waitForContent("consumer", "↓1")
-
-	// `p` directly runs pull on the filtered repos.
-	tp.send("p")
-	tp.waitForContent("✓")
 }
 
 func TestRunPullFailureShowsCross(t *testing.T) {
@@ -230,4 +202,3 @@ func TestFilterExcludingAllShowsNoMatches(t *testing.T) {
 	tp.sendKey(keyEnter)
 	tp.waitForContent("no matches")
 }
-
