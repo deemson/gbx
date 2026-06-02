@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -135,4 +136,38 @@ func TestRankFilterNoFuzzyKeepsInputOrder(t *testing.T) {
 	// input order (which the model feeds name-sorted).
 	got := pick(names, rankFilter("^api", names, make([]string, 2), fieldName))
 	require.Equal(t, []string{"api-two", "api-one"}, got)
+}
+
+// positions runs the pattern's terms against s and returns the highlighted byte
+// offsets sorted, for concise assertions (offsets == char indices for ASCII).
+func positions(pattern, s string) []int {
+	hl := matchPositions(parseTerms(pattern), s)
+	out := make([]int, 0, len(hl))
+	for o := range hl {
+		out = append(out, o)
+	}
+	sort.Ints(out)
+	return out
+}
+
+func TestMatchPositions(t *testing.T) {
+	cases := []struct {
+		pattern string
+		s       string
+		want    []int
+	}{
+		{"", "api-gateway", []int{}},                                              // empty: nothing lit
+		{"api", "api-gateway", []int{0, 1, 2}},                                    // fuzzy, contiguous head
+		{"agw", "api-gateway", []int{0, 4, 8}},                                    // fuzzy subsequence: a, g, w
+		{"API", "api-gateway", []int{0, 1, 2}},                                    // case-insensitive
+		{"^api", "api-gateway", []int{0, 1, 2}},                                   // prefix range
+		{"way$", "api-gateway", []int{8, 9, 10}},                                  // suffix range
+		{"^api-gateway$", "api-gateway", []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}}, // equals: whole
+		{"!api", "api-gateway", []int{}},                                          // negated: nothing lit
+		{"^api way$", "api-gateway", []int{0, 1, 2, 8, 9, 10}},                    // union across terms
+		{"xyz", "api-gateway", []int{}},                                           // no match: nothing lit
+	}
+	for _, c := range cases {
+		require.Equal(t, c.want, positions(c.pattern, c.s), "pattern %q", c.pattern)
+	}
 }

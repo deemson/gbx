@@ -834,9 +834,24 @@ func (m model) listContent() string {
 	stateCol := lipgloss.NewStyle().Width(stateWidth)
 	diffCol := lipgloss.NewStyle().Width(diffWidth)
 
+	// Underline the filter-matched characters, scoped to the searched field:
+	// C-2 lights only the name, C-3 only the branch, C-1 (default) each column
+	// independently wherever it matched. Terms are parsed once for all rows.
+	terms := parseTerms(m.effectiveFilter())
+	hlName := m.field != fieldBranch
+	hlBranch := m.field != fieldName
+
 	rows := make([]string, len(matched))
 	for i, r := range matched {
-		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(r.name), "  ", branchCol.Render(branchText(r)), "  ", trackingCol.Render(trackingText(r)), "  ", stateCol.Render(stateText(r)), "  ", diffCol.Render(diffText(r))}
+		name := r.name
+		if hlName {
+			name = renderHighlight(r.name, matchPositions(terms, r.name), lipgloss.NewStyle())
+		}
+		branch := branchText(r)
+		if hlBranch && r.status != nil {
+			branch = renderHighlight(r.status.branch, matchPositions(terms, r.status.branch), branchStyle(r.status.branch))
+		}
+		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(name), "  ", branchCol.Render(branch), "  ", trackingCol.Render(trackingText(r)), "  ", stateCol.Render(stateText(r)), "  ", diffCol.Render(diffText(r))}
 		if s := r.summary(); s != "" {
 			prefix := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
 			if m.width > 0 {

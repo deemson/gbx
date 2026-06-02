@@ -3,6 +3,7 @@ package tui
 import (
 	"crypto/md5"
 	"encoding/binary"
+	"strings"
 
 	"charm.land/lipgloss/v2"
 )
@@ -43,4 +44,40 @@ var branchPalette = []lipgloss.Style{
 func branchStyle(name string) lipgloss.Style {
 	hash := md5.Sum([]byte(name))
 	return branchPalette[binary.BigEndian.Uint32(hash[0:4])%uint32(len(branchPalette))]
+}
+
+// renderHighlight renders s over base, layering bold + underline on the runes
+// whose starting byte offset is in hl (the filter-matched characters). The
+// highlight is attribute-only, so base's foreground — default for names, the
+// hash hue for branches — shows through on matched and unmatched runes alike.
+// Contiguous runes of the same state are coalesced into one styled segment to
+// keep the escape count down.
+func renderHighlight(s string, hl map[int]bool, base lipgloss.Style) string {
+	if len(hl) == 0 {
+		return base.Render(s)
+	}
+	hi := base.Bold(true).Underline(true)
+	var out strings.Builder
+	var seg []rune
+	segHL := false
+	flush := func() {
+		if len(seg) == 0 {
+			return
+		}
+		st := base
+		if segHL {
+			st = hi
+		}
+		out.WriteString(st.Render(string(seg)))
+		seg = seg[:0]
+	}
+	for bi, r := range s {
+		if hl[bi] != segHL {
+			flush()
+			segHL = hl[bi]
+		}
+		seg = append(seg, r)
+	}
+	flush()
+	return out.String()
 }

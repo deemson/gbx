@@ -3,6 +3,7 @@ package tui
 import (
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/sahilm/fuzzy"
 )
@@ -181,4 +182,61 @@ func seq(n int) []int {
 		idx[i] = i
 	}
 	return idx
+}
+
+// matchPositions returns the set of byte offsets in s that begin a rune the
+// filter wants highlighted — every positive (non-negated) term contributes the
+// run it matched: a bare term the fuzzy MatchedIndexes (already byte offsets),
+// an anchored term its contiguous range (^prefix head, suffix$ tail, ^equals$
+// whole). Negated terms contribute nothing — there's no match to point at. The
+// caller scopes which string (name and/or branch) this runs against by field.
+func matchPositions(terms []term, s string) map[int]bool {
+	ls := strings.ToLower(s)
+	n := utf8.RuneCountInString(s)
+	hl := map[int]bool{}
+	add := func(offs []int) {
+		for _, o := range offs {
+			hl[o] = true
+		}
+	}
+	for _, t := range terms {
+		if t.negate {
+			continue
+		}
+		lb := strings.ToLower(t.body)
+		bn := utf8.RuneCountInString(t.body)
+		switch t.kind {
+		case termPrefix:
+			if strings.HasPrefix(ls, lb) {
+				add(runeByteOffsets(s, 0, bn))
+			}
+		case termSuffix:
+			if strings.HasSuffix(ls, lb) {
+				add(runeByteOffsets(s, n-bn, n))
+			}
+		case termEquals:
+			if ls == lb {
+				add(runeByteOffsets(s, 0, n))
+			}
+		default: // bare fuzzy: same call as matchString, so indexes line up
+			if ms := fuzzy.Find(t.body, []string{s}); len(ms) > 0 {
+				add(ms[0].MatchedIndexes)
+			}
+		}
+	}
+	return hl
+}
+
+// runeByteOffsets returns the starting byte offset of each rune of s in the
+// half-open rune range [startRune, endRune).
+func runeByteOffsets(s string, startRune, endRune int) []int {
+	var offs []int
+	ri := 0
+	for bi := range s {
+		if ri >= startRune && ri < endRune {
+			offs = append(offs, bi)
+		}
+		ri++
+	}
+	return offs
 }
