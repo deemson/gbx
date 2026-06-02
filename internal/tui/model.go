@@ -809,7 +809,7 @@ func (m model) listContent() string {
 
 	// Column widths are pinned to the full repo list, not just the matched
 	// subset, so they stay put as the filter narrows the visible rows.
-	nameWidth, branchWidth, stateWidth := 0, 0, 0
+	nameWidth, branchWidth, stateWidth, diffWidth := 0, 0, 0, 0
 	for _, r := range m.repos {
 		if w := lipgloss.Width(r.name); w > nameWidth {
 			nameWidth = w
@@ -820,21 +820,19 @@ func (m model) listContent() string {
 		if w := lipgloss.Width(stateText(r)); w > stateWidth {
 			stateWidth = w
 		}
+		if w := lipgloss.Width(diffText(r)); w > diffWidth {
+			diffWidth = w
+		}
 	}
 	gutterCol := lipgloss.NewStyle().Width(2) // spinner / ✗ slot, 1 glyph + 1 pad
 	nameCol := lipgloss.NewStyle().Width(nameWidth)
 	branchCol := lipgloss.NewStyle().Width(branchWidth)
 	stateCol := lipgloss.NewStyle().Width(stateWidth)
+	diffCol := lipgloss.NewStyle().Width(diffWidth)
 
 	rows := make([]string, len(matched))
 	for i, r := range matched {
-		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(r.name), "  ", branchCol.Render(branchText(r)), "  ", stateCol.Render(stateText(r))}
-		switch {
-		case r.diff == nil:
-			cols = append(cols, "  ", "...") // line changes not loaded yet
-		case !r.diff.empty():
-			cols = append(cols, "  ", r.diff.String()) // hidden entirely when +0 -0
-		}
+		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(r.name), "  ", branchCol.Render(branchText(r)), "  ", stateCol.Render(stateText(r)), "  ", diffCol.Render(diffText(r))}
 		if s := r.summary(); s != "" {
 			prefix := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
 			if m.width > 0 {
@@ -853,6 +851,19 @@ func branchText(r repoEntry) string {
 		return "..."
 	}
 	return r.status.branchField()
+}
+
+// diffText is the +/- line-changes column for a row: "..." until the diff
+// loads, blank once it has settled with no changes (success is silent), else
+// the "+N -N" aggregate.
+func diffText(r repoEntry) string {
+	if r.diff == nil {
+		return "..."
+	}
+	if r.diff.empty() {
+		return ""
+	}
+	return r.diff.String()
 }
 
 // stateText is the change-state column for a row, empty until status loads.

@@ -521,6 +521,27 @@ func TestDiffLoadedPopulatesRow(t *testing.T) {
 	require.Equal(t, lineChanges{added: 3, deleted: 1}, *m.repos[0].diff)
 }
 
+func TestErrorColumnAlignsAcrossDiffStates(t *testing.T) {
+	m := newModel("x").addRepo("aaa", git.Repo{}).addRepo("bbb", git.Repo{})
+	// Identical clean status so the name/branch/state columns match across rows;
+	// only the diff cell differs (clean → blank vs "+5 -2"). The diff used to be
+	// the one variable-width column, floating the error after it.
+	st := repoStatus{branch: "main", hasUpstream: true}
+	m = m.setStatus("aaa", st).setStatus("bbb", st)
+	m = m.setDiff("aaa", lineChanges{})                     // clean → blank diff cell
+	m = m.setDiff("bbb", lineChanges{added: 5, deleted: 2}) // "+5 -2"
+	m.repos[0].cmdErr = errors.New("boom-aaa")
+	m.repos[1].cmdErr = errors.New("boom-bbb")
+
+	lines := strings.Split(ansi.Strip(m.listContent()), "\n")
+	require.Len(t, lines, 2)
+	idxA := strings.Index(lines[0], "boom-aaa")
+	idxB := strings.Index(lines[1], "boom-bbb")
+	require.NotEqual(t, -1, idxA)
+	require.NotEqual(t, -1, idxB)
+	require.Equal(t, idxA, idxB) // error starts at the same column despite differing diff
+}
+
 func TestEmptyDiffHidesChurn(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 	m = m.setStatus("r", repoStatus{branch: "main", hasUpstream: true})
