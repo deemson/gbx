@@ -69,18 +69,19 @@ func (rs repoStatus) clean() bool {
 	return rs.modified+rs.added+rs.deleted+rs.renamed+rs.untracked+rs.conflict == 0
 }
 
-// branchField is the branch name plus its sync state: a dim ⌀ when the branch
-// has no upstream, otherwise the non-zero ahead/behind arrows (nothing when in
-// sync). The branch name itself keeps the default foreground.
+// branchField is the branch name, hash-colored.
 func (rs repoStatus) branchField() string {
-	name := branchStyle(rs.branch).Render(rs.branch)
+	return branchStyle(rs.branch).Render(rs.branch)
+}
+
+// trackingField is the branch's upstream relationship, its own column: a dim ⌀
+// when the branch has no upstream, otherwise the non-zero ahead/behind arrows
+// (blank when in sync).
+func (rs repoStatus) trackingField() string {
 	if !rs.hasUpstream {
-		return name + " " + colorDim.Render("⌀")
+		return colorDim.Render("⌀")
 	}
-	if sync := rs.sync(); sync != "" {
-		return name + " " + colorCyan.Render(sync)
-	}
-	return name
+	return colorCyan.Render(rs.sync())
 }
 
 // sync is the ahead/behind arrows with zero sides hidden, empty when in sync.

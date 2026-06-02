@@ -809,13 +809,16 @@ func (m model) listContent() string {
 
 	// Column widths are pinned to the full repo list, not just the matched
 	// subset, so they stay put as the filter narrows the visible rows.
-	nameWidth, branchWidth, stateWidth, diffWidth := 0, 0, 0, 0
+	nameWidth, branchWidth, trackingWidth, stateWidth, diffWidth := 0, 0, 0, 0, 0
 	for _, r := range m.repos {
 		if w := lipgloss.Width(r.name); w > nameWidth {
 			nameWidth = w
 		}
 		if w := lipgloss.Width(branchText(r)); w > branchWidth {
 			branchWidth = w
+		}
+		if w := lipgloss.Width(trackingText(r)); w > trackingWidth {
+			trackingWidth = w
 		}
 		if w := lipgloss.Width(stateText(r)); w > stateWidth {
 			stateWidth = w
@@ -827,12 +830,13 @@ func (m model) listContent() string {
 	gutterCol := lipgloss.NewStyle().Width(2) // spinner / ✗ slot, 1 glyph + 1 pad
 	nameCol := lipgloss.NewStyle().Width(nameWidth)
 	branchCol := lipgloss.NewStyle().Width(branchWidth)
+	trackingCol := lipgloss.NewStyle().Width(trackingWidth)
 	stateCol := lipgloss.NewStyle().Width(stateWidth)
 	diffCol := lipgloss.NewStyle().Width(diffWidth)
 
 	rows := make([]string, len(matched))
 	for i, r := range matched {
-		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(r.name), "  ", branchCol.Render(branchText(r)), "  ", stateCol.Render(stateText(r)), "  ", diffCol.Render(diffText(r))}
+		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(r.name), "  ", branchCol.Render(branchText(r)), "  ", trackingCol.Render(trackingText(r)), "  ", stateCol.Render(stateText(r)), "  ", diffCol.Render(diffText(r))}
 		if s := r.summary(); s != "" {
 			prefix := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
 			if m.width > 0 {
@@ -851,6 +855,15 @@ func branchText(r repoEntry) string {
 		return "..."
 	}
 	return r.status.branchField()
+}
+
+// trackingText is the upstream-relationship column (⌀ / ahead-behind arrows),
+// blank until status loads.
+func trackingText(r repoEntry) string {
+	if r.status == nil {
+		return ""
+	}
+	return r.status.trackingField()
 }
 
 // diffText is the +/- line-changes column for a row: "..." until the diff

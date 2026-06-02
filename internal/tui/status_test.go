@@ -48,15 +48,18 @@ func TestRepoStatusFields(t *testing.T) {
 			git.UntrackedPathStatus{},
 		},
 	})
-	require.Equal(t, "main ↑2", ansi.Strip(dirty.branchField()))
+	require.Equal(t, "main", ansi.Strip(dirty.branchField()))
+	require.Equal(t, "↑2", ansi.Strip(dirty.trackingField()))
 	require.Equal(t, "~3 …2", ansi.Strip(dirty.stateField()))
 
 	cleanInSync := newRepoStatus(git.Status{Branch: "main", Upstream: "origin/main"})
 	require.Equal(t, "main", ansi.Strip(cleanInSync.branchField()))
+	require.Equal(t, "", ansi.Strip(cleanInSync.trackingField()))
 	require.Equal(t, "", ansi.Strip(cleanInSync.stateField()))
 
 	noUpstream := newRepoStatus(git.Status{Branch: "dev"})
-	require.Equal(t, "dev ⌀", ansi.Strip(noUpstream.branchField()))
+	require.Equal(t, "dev", ansi.Strip(noUpstream.branchField()))
+	require.Equal(t, "⌀", ansi.Strip(noUpstream.trackingField()))
 	require.Equal(t, "", ansi.Strip(noUpstream.stateField()))
 
 	conflict := newRepoStatus(git.Status{
@@ -65,6 +68,7 @@ func TestRepoStatusFields(t *testing.T) {
 		Behind:   1,
 		Paths:    []any{git.ConflictPathStatus{}},
 	})
-	require.Equal(t, "feat ↓1", ansi.Strip(conflict.branchField()))
+	require.Equal(t, "feat", ansi.Strip(conflict.branchField()))
+	require.Equal(t, "↓1", ansi.Strip(conflict.trackingField()))
 	require.Equal(t, "‡1", ansi.Strip(conflict.stateField()))
 }
