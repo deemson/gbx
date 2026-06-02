@@ -180,6 +180,17 @@ func TestRowShowsLineChanges(t *testing.T) {
 	tp.waitForContent("proj", "~1", "+1 -0") // one unstaged-modified file
 }
 
+func TestHeaderShowsVersionPidAndChips(t *testing.T) {
+	dir := t.TempDir()
+	mkRepo(t, dir, "proj")
+
+	tp := runTestProgram(t, dir)
+	// The active chip's label is bold (an SGR the Ascii profile keeps), so assert
+	// an inactive chip — "<C-2> name" stays plain/contiguous — plus the "<C-1>"
+	// key prefix, "gbx dev", and "PID:".
+	tp.waitForContent("gbx dev", "PID:", "<C-1>", "<C-2> name")
+}
+
 func TestHelpOverlayShowsBindings(t *testing.T) {
 	dir := t.TempDir()
 	mkRepo(t, dir, "proj")

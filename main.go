@@ -10,6 +10,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// version is set at build time via -ldflags "-X main.version=v1.2.3"; empty in
+// plain `go build`, where the TUI falls back to "dev".
+var version string
+
 func main() {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 	homeDir := os.Getenv("HOME")
@@ -31,7 +35,7 @@ func main() {
 		dir = os.Args[1]
 	}
 
-	if err := tui.Run(tui.WithDir(dir)); err != nil {
+	if err := tui.Run(tui.WithDir(dir), tui.WithVersion(version)); err != nil {
 		log.Fatal().Err(err).Msg("tui exited with error")
 	}
 }

@@ -2,7 +2,9 @@ package tui
 
 import (
 	"context"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
@@ -62,6 +64,11 @@ type model struct {
 	// suggestions / suggIndex back the checkout-prompt branch autocomplete.
 	suggestions []string
 	suggIndex   int
+
+	// version / pid are static header chrome shown dim in the right corner.
+	// version defaults to "dev"; release builds override it via WithVersion.
+	version string
+	pid     int
 }
 
 func newModel(dir string) model {
@@ -74,6 +81,8 @@ func newModel(dir string) model {
 		dir:       dir,
 		prompt:    p,
 		suggIndex: -1,
+		version:   "dev",
+		pid:       os.Getpid(),
 	}
 }
 
@@ -538,11 +547,25 @@ func (m model) View() tea.View {
 	if m.mode == modeHelp {
 		return tea.View{Content: helpContent(), AltScreen: true}
 	}
-	header := lipgloss.JoinVertical(lipgloss.Left, m.headerTop(), m.headerBottom())
+	left := lipgloss.JoinVertical(lipgloss.Left, m.headerTop(), m.headerBottom())
+	right := m.rightBlock()
+	var topBlock string
+	if m.width > 0 {
+		leftWidth := m.width - lipgloss.Width(right)
+		if leftWidth < 0 {
+			leftWidth = 0
+		}
+		left = lipgloss.NewStyle().Width(leftWidth).Render(left)
+		topBlock = lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+	} else {
+		topBlock = lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+	}
+	rule := colorDim.Render(strings.Repeat("─", m.width))
+	header := lipgloss.JoinVertical(lipgloss.Left, topBlock, rule)
 	list := m.listContent()
 
 	if m.height > 0 {
-		listHeight := m.height - 2
+		listHeight := m.height - 3
 		if listHeight < 1 {
 			listHeight = 1
 		}
@@ -550,6 +573,14 @@ func (m model) View() tea.View {
 		return tea.View{Content: lipgloss.JoinVertical(lipgloss.Left, header, listArea), AltScreen: true}
 	}
 	return tea.View{Content: lipgloss.JoinVertical(lipgloss.Left, header, list), AltScreen: true}
+}
+
+// rightBlock is the static right-corner chrome: "gbx <version>" over
+// "PID: <pid>", both dim, right-aligned. Shown in every mode.
+func (m model) rightBlock() string {
+	ver := colorDim.Render("gbx " + m.version)
+	pid := colorDim.Render("PID: " + strconv.Itoa(m.pid))
+	return lipgloss.JoinVertical(lipgloss.Right, ver, pid)
 }
 
 // headerTop is row 1: the active prompt's input while a prompt is open, or the
@@ -577,25 +608,27 @@ func (m model) headerBottom() string {
 	return m.modesLine()
 }
 
-// modesLine renders the C-1/2/3 chips with the active one bold + accent and
-// the others dim, separated by middle dots.
+// modesLine renders the C-1/2/3 chips, each a dim "<C-N>" key prefix followed
+// by a label — the active chip's label bold + accent, the others dim —
+// separated by middle dots.
 func (m model) modesLine() string {
 	active := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
 	chips := []struct {
 		field filterField
-		text  string
+		key   string
+		label string
 	}{
-		{fieldNameBranch, "C-1: name + branch"},
-		{fieldName, "C-2: name"},
-		{fieldBranch, "C-3: branch"},
+		{fieldNameBranch, "<C-1>", "name + branch"},
+		{fieldName, "<C-2>", "name"},
+		{fieldBranch, "<C-3>", "branch"},
 	}
 	parts := make([]string, len(chips))
 	for i, c := range chips {
+		labelStyle := colorDim
 		if c.field == m.field {
-			parts[i] = active.Render(c.text)
-		} else {
-			parts[i] = colorDim.Render(c.text)
+			labelStyle = active
 		}
+		parts[i] = colorDim.Render(c.key+" ") + labelStyle.Render(c.label)
 	}
 	line := strings.Join(parts, " · ")
 	if m.width > 0 {

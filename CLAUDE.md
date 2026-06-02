@@ -48,10 +48,14 @@ of git commands across them.
   shell out elsewhere.
 - **The TUI is htop-style:** list mode is the default — letter keys dispatch
   git actions directly on the filtered repos and `ctrl+1/2/3` toggle the filter
-  field (name+branch / name / branch). The app has a **two-row header at the
+  field (name+branch / name / branch). The app has a **three-row header at the
   top** that's always visible: row 1 is `Filter: <value>` (dim `none` when
-  empty) and row 2 is the field chips `C-1: name + branch · C-2: name · C-3:
-  branch` with the active chip bold + accent. `ctrl+f` opens the filter
+  empty), row 2 is the field chips `<C-1> name + branch · <C-2> name · <C-3>
+  branch` — each chip a dim `<C-N>` key prefix plus a label, the active chip's
+  label bold + accent — and row 3 is a full-width dim `─` rule. The right corner
+  is static dim chrome on rows 1–2: `gbx <version>` over `PID: <pid>`, shown in
+  every mode (`version` defaults to `dev`; release builds set it via
+  `WithVersion`/ldflags). `ctrl+f` opens the filter
   prompt — row 1 becomes the live-editable draft and live-narrows the visible
   rows (Enter commits to `m.filter`). `c` opens the Switch Branch prompt
   (`Switch Branch:` on row 1, branch suggestions on row 2, dim `(no matches)`
@@ -76,7 +80,9 @@ of git commands across them.
 
 ## Build / run / test
 
-- `go build` → `./gbx`; run `./gbx [root-dir]` (default: cwd).
+- `go build` → `./gbx`; run `./gbx [root-dir]` (default: cwd). The header
+  version shows `dev` for a plain build; release builds stamp it via
+  `go build -ldflags "-X main.version=v1.2.3"`.
 - `go test ./...`
 
 ## Workflow

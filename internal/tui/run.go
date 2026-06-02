@@ -15,6 +15,10 @@ func Run(opts ...Option) error {
 	if cfg.dir == "" {
 		return errors.New("tui: WithDir is required")
 	}
-	_, err := tea.NewProgram(newModel(cfg.dir)).Run()
+	m := newModel(cfg.dir)
+	if cfg.version != "" {
+		m.version = cfg.version
+	}
+	_, err := tea.NewProgram(m).Run()
 	return err
 }
