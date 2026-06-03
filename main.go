@@ -41,7 +41,7 @@ func main() {
 	// (renamed "-crash.log") when the TUI returns an error so the session that
 	// failed can be inspected. Bubble Tea catches panics in the TUI and surfaces
 	// them here as a non-nil error, so this covers crashes too.
-	err = tui.Run(tui.WithDir(dir), tui.WithVersion(version))
+	err = tui.Run(tui.WithDir(dir), tui.WithVersion(version), tui.WithLogPath(logPath))
 	if err != nil {
 		log.Error().Err(err).Msg("tui exited with error")
 	}

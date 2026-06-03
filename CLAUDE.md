@@ -42,7 +42,12 @@ of git commands across them.
     `WriteFileAdd`, `Commit`, `Push`, `Pull`, `Fetch`, …). Use these for tests
     across the whole codebase, not just the `git` package.
 - `internal/tui` — the Bubble Tea v2 app (`charm.land/bubbletea/v2`, `bubbles/v2`,
-  `lipgloss/v2`).
+  `lipgloss/v2`). **Before writing or editing any TUI code, invoke the
+  project-local `charm-tui` skill** (`.claude/skills/charm-tui/`, Skill tool) —
+  it bundles the matching **v2** examples. Recalled API shape is mostly v1 and
+  wrong (imports, `Update`/`View` signatures, message types all differ), so read
+  the closest example's `main.go` instead of guessing; `go doc` on the pinned
+  module for exact signatures.
 - `main.go` — wires logging (see **Logging**) and runs the TUI with the root dir.
 
 ## Conventions

@@ -171,7 +171,7 @@ func TestHelpOverlayShowsBindings(t *testing.T) {
 	tp.waitForContent("proj")
 
 	tp.sendKey(keyQuestion)
-	tp.waitForContent("gbx — keys", "list mode", "ctrl+f", "filter prompt")
+	tp.waitForContent("list mode", "ctrl+f", "filter prompt", "filter syntax")
 }
 
 func TestRefreshPicksUpExternalChange(t *testing.T) {

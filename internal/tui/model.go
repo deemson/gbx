@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sort"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -86,6 +88,15 @@ type model struct {
 	version string
 	pid     int
 
+	// logPath is the per-PID log file, shown in the help overlay's header so a
+	// failed session can be found. Set from WithLogPath (main.go owns the path).
+	logPath string
+
+	// help is the scrollable viewport for the ? overlay. Its content is static
+	// (the bindings), set once; it's resized on every WindowSizeMsg and reset to
+	// the top each time help opens.
+	help viewport.Model
+
 	// spinner is the single shared loading spinner rendered in every busy row's
 	// left gutter. spinning guards its tick loop: the tick is kicked once when
 	// work starts and stops itself when nothing is busy (see kickSpinner / the
@@ -103,6 +114,8 @@ func newModel(dir string) model {
 	sp := spinner.New()
 	sp.Spinner = spinner.MiniDot
 	sp.Style = colorDim
+	hv := viewport.New()
+	hv.SetContent(helpContent())
 	return model{
 		dir:       dir,
 		prompt:    p,
@@ -110,6 +123,7 @@ func newModel(dir string) model {
 		version:   "dev",
 		pid:       os.Getpid(),
 		spinner:   sp,
+		help:      hv,
 	}
 }
 
@@ -131,9 +145,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.prompt.SetWidth(msg.Width - lipgloss.Width(m.prompt.Prompt))
+		m.help.SetWidth(msg.Width)
+		m.help.SetHeight(msg.Height - lipgloss.Height(m.helpHeader()) - lipgloss.Height(m.helpFooter()))
 		return m, nil
 	case tea.KeyPressMsg:
 		return m.updateKey(msg)
+	case tea.MouseWheelMsg:
+		if m.mode == modeHelp {
+			var cmd tea.Cmd
+			m.help, cmd = m.help.Update(msg)
+			return m, cmd
+		}
+		return m, nil
 	case entriesLoadedMsg:
 		cmds := make([]tea.Cmd, 0, len(msg.entries))
 		for _, e := range msg.entries {
@@ -194,7 +217,7 @@ func (m model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		nm, cmd := m.updateBranchPrompt(msg)
 		return nm, cmd
 	case modeHelp:
-		return m.updateHelp(msg), nil
+		return m.updateHelp(msg)
 	}
 	return m.updateList(msg)
 }
@@ -206,6 +229,7 @@ func (m model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "?":
 		m.mode = modeHelp
+		m.help.GotoTop()
 		return m, nil
 	case "ctrl+f":
 		return m.openFilterPrompt()
@@ -395,13 +419,18 @@ func (m model) applyPromptLabel(label string) model {
 	return m
 }
 
-// updateHelp handles keys with the help overlay open. ? or ESC closes it.
-func (m model) updateHelp(msg tea.KeyPressMsg) model {
+// updateHelp handles keys with the help overlay open. ? or ESC closes it; every
+// other key is forwarded to the viewport for scrolling (↑/↓, j/k, PgUp/PgDn,
+// Home/End). q stays unbound — you back out of help before quitting the app.
+func (m model) updateHelp(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	switch msg.String() {
 	case "?", "esc":
 		m.mode = modeList
+		return m, nil
 	}
-	return m
+	var cmd tea.Cmd
+	m.help, cmd = m.help.Update(msg)
+	return m, cmd
 }
 
 // effectiveFilter is the filter string used by matchedIndexes — the prompt's
@@ -669,9 +698,28 @@ func (m model) cycleSuggestion(delta int) model {
 
 func (m model) View() tea.View {
 	if m.mode == modeHelp {
-		return tea.View{Content: helpContent(), AltScreen: true}
+		content := lipgloss.JoinVertical(lipgloss.Left, m.helpHeader(), m.help.View(), m.helpFooter())
+		return tea.View{Content: content, AltScreen: true, MouseMode: tea.MouseModeCellMotion}
 	}
-	left := lipgloss.JoinVertical(lipgloss.Left, m.headerTop(), m.headerBottom())
+	header := m.framedHeader(lipgloss.JoinVertical(lipgloss.Left, m.headerTop(), m.headerBottom()))
+	list := m.listContent()
+
+	if m.height > 0 {
+		listHeight := m.height - 3
+		if listHeight < 1 {
+			listHeight = 1
+		}
+		listArea := lipgloss.NewStyle().Height(listHeight).Render(list)
+		return tea.View{Content: lipgloss.JoinVertical(lipgloss.Left, header, listArea), AltScreen: true}
+	}
+	return tea.View{Content: lipgloss.JoinVertical(lipgloss.Left, header, list), AltScreen: true}
+}
+
+// framedHeader composes the top chrome shared by the list view and the help
+// overlay: the given left block beside the right-corner version/PID block, with
+// the full-width dim rule beneath. The left block is width-constrained so the
+// right block sits flush in the corner.
+func (m model) framedHeader(left string) string {
 	right := m.rightBlock()
 	var topBlock string
 	if m.width > 0 {
@@ -685,18 +733,31 @@ func (m model) View() tea.View {
 		topBlock = lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
 	}
 	rule := colorDim.Render(strings.Repeat("─", m.width))
-	header := lipgloss.JoinVertical(lipgloss.Left, topBlock, rule)
-	list := m.listContent()
+	return lipgloss.JoinVertical(lipgloss.Left, topBlock, rule)
+}
 
-	if m.height > 0 {
-		listHeight := m.height - 3
-		if listHeight < 1 {
-			listHeight = 1
-		}
-		listArea := lipgloss.NewStyle().Height(listHeight).Render(list)
-		return tea.View{Content: lipgloss.JoinVertical(lipgloss.Left, header, listArea), AltScreen: true}
+// helpHeader is the help overlay's fixed top chrome: the dim "Log" label over
+// the log path on the left, the shared version/PID block on the right, framed
+// by the same rule as the list header.
+func (m model) helpHeader() string {
+	left := lipgloss.JoinVertical(lipgloss.Left, colorDim.Render("Log"), colorDim.Render(m.logPath))
+	return m.framedHeader(left)
+}
+
+// helpFooter is the help overlay's fixed bottom line: a dim back hint on the
+// left and the scroll percentage on the right, the percentage omitted when the
+// bindings fit without scrolling.
+func (m model) helpFooter() string {
+	hint := colorDim.Render("? / esc: back")
+	if m.help.TotalLineCount() <= m.help.VisibleLineCount() {
+		return hint
 	}
-	return tea.View{Content: lipgloss.JoinVertical(lipgloss.Left, header, list), AltScreen: true}
+	pct := colorDim.Render(fmt.Sprintf("%3.f%%", m.help.ScrollPercent()*100))
+	gap := m.width - lipgloss.Width(hint) - lipgloss.Width(pct)
+	if gap < 1 {
+		gap = 1
+	}
+	return hint + strings.Repeat(" ", gap) + pct
 }
 
 // rightBlock is the static right-corner chrome: "gbx <version>" over

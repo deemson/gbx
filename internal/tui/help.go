@@ -3,6 +3,8 @@ package tui
 import (
 	"fmt"
 	"strings"
+
+	"charm.land/lipgloss/v2"
 )
 
 // keyBinding is one row of the help overlay. These slices are the source of
@@ -54,20 +56,34 @@ var filterSyntax = []keyBinding{
 	{"!foo", "exclude foo"},
 }
 
+// helpHeading styles a section header — cyan bold, the app's accent (the active
+// filter chip). helpKey styles the key column yellow so keys pop against the
+// default-foreground descriptions.
+var (
+	helpHeading = colorCyan.Bold(true)
+	helpKey     = colorYellow
+)
+
+// helpContent is the scrollable body of the help overlay: the three binding
+// sections, no title and no back hint (those live in the fixed header/footer).
+// Keys are colored and padded to a 10-wide column; descriptions stay default.
 func helpContent() string {
 	var b strings.Builder
-	b.WriteString("gbx — keys\n\nlist mode\n\n")
-	for _, kb := range listBindings {
-		fmt.Fprintf(&b, "  %-10s  %s\n", kb.keys, kb.desc)
+	section := func(title string, bindings []keyBinding) {
+		b.WriteString(helpHeading.Render(title))
+		b.WriteString("\n\n")
+		for _, kb := range bindings {
+			pad := 10 - lipgloss.Width(kb.keys)
+			if pad < 0 {
+				pad = 0
+			}
+			fmt.Fprintf(&b, "  %s%s  %s\n", helpKey.Render(kb.keys), strings.Repeat(" ", pad), kb.desc)
+		}
 	}
-	b.WriteString("\nprompts (ctrl+f filter · c Switch Branch · b New Branch)\n\n")
-	for _, kb := range promptBindings {
-		fmt.Fprintf(&b, "  %-10s  %s\n", kb.keys, kb.desc)
-	}
-	b.WriteString("\nfilter syntax (space = AND)\n\n")
-	for _, fs := range filterSyntax {
-		fmt.Fprintf(&b, "  %-10s  %s\n", fs.keys, fs.desc)
-	}
-	b.WriteString("\n? or esc: back\n")
+	section("list mode", listBindings)
+	b.WriteString("\n")
+	section("prompts (ctrl+f filter · c Switch Branch · b New Branch)", promptBindings)
+	b.WriteString("\n")
+	section("filter syntax (space = AND)", filterSyntax)
 	return b.String()
 }

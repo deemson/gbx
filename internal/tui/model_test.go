@@ -309,6 +309,35 @@ func TestQuestionTogglesHelp(t *testing.T) {
 	require.Equal(t, modeList, closedByEsc.(model).mode)
 }
 
+// A scroll key reaches the viewport instead of closing help.
+func TestHelpForwardsScrollKeys(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+
+	opened, _ := m.Update(keyQuestion)
+	scrolled, _ := opened.(model).Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	require.Equal(t, modeHelp, scrolled.(model).mode) // down scrolls, doesn't close
+}
+
+// WithLogPath threads the log file path main.go owns into the model.
+func TestWithLogPathSetsField(t *testing.T) {
+	cfg := &config{}
+	WithLogPath("/state/gbx/gbx-42.log")(cfg)
+	require.Equal(t, "/state/gbx/gbx-42.log", cfg.logPath)
+}
+
+// The help overlay's header shows the PID and the log path so a failed session
+// can be found.
+func TestHelpShowsPIDAndLogPath(t *testing.T) {
+	m := newModel("x")
+	m.pid = 4242
+	m.logPath = "/state/gbx/gbx-4242.log"
+	m = drive(t, m, tea.WindowSizeMsg{Width: 100, Height: 40}, keyQuestion)
+
+	out := ansi.Strip(m.View().Content)
+	require.Contains(t, out, "PID: 4242")
+	require.Contains(t, out, "/state/gbx/gbx-4242.log")
+}
+
 func TestCOpensCheckoutPromptWithSuggestions(t *testing.T) {
 	m := newModel("x").addRepo("a", git.Repo{})
 	m = m.setBranches("a", []string{"main", "feat"})

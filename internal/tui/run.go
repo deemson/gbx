@@ -19,6 +19,7 @@ func Run(opts ...Option) error {
 	if cfg.version != "" {
 		m.version = cfg.version
 	}
+	m.logPath = cfg.logPath
 	_, err := tea.NewProgram(m).Run()
 	return err
 }
