@@ -21,7 +21,7 @@ of git commands across them.
   the typed error (`err.Error()`); the command error wins over a load error. An
   explicit `r` refresh clears a settled error (gutter + one-liner) before
   re-reading; a command's own follow-up refresh keeps it. The error is also
-  logged to `~/gbx.log`. There is **no output pane** — the typed errors are the
+  logged to the per-PID log file (see **Logging**). There is **no output pane** — the typed errors are the
   surface.
 - **Discovery:** scan the *immediate* subdirectories of one root dir (CLI arg,
   default cwd); each that is a git repo becomes a row. No recursion, no config
@@ -43,7 +43,7 @@ of git commands across them.
     across the whole codebase, not just the `git` package.
 - `internal/tui` — the Bubble Tea v2 app (`charm.land/bubbletea/v2`, `bubbles/v2`,
   `lipgloss/v2`).
-- `main.go` — wires logging (→ `~/gbx.log`) and runs the TUI with the root dir.
+- `main.go` — wires logging (see **Logging**) and runs the TUI with the root dir.
 
 ## Conventions
 
@@ -79,9 +79,13 @@ of git commands across them.
   appended* text — an in-place change (e.g. `↓1`→`↓0`) is not a contiguous
   substring. Assert state *transitions* with renderer-free model-level tests
   (drive `model.Update` directly, inspect state), as in `model_test.go`.
-- **Logging:** zerolog → `~/gbx.log` (the TUI owns stdout). Each command's
-  outcome (the typed error, or success) is logged here, in addition to its in-app
-  surface (the row's gutter `✗` + error one-liner). Tests discard logs (see `TestMain`).
+- **Logging:** zerolog → `$XDG_STATE_HOME/gbx/gbx-<pid>.log` (the TUI owns
+  stdout). Each command's outcome (the typed error, or success) is logged here,
+  in addition to its in-app surface (the row's gutter `✗` + error one-liner).
+  The file is **removed on a clean exit** and **kept, renamed `gbx-<pid>-crash.log`
+  (with the error logged), when `tui.Run` returns an error** — including a TUI
+  panic, which Bubble Tea catches and surfaces as a non-nil error. Tests discard
+  logs (see `TestMain`).
 
 ## Build / run / test
 
