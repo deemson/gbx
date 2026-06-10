@@ -1,10 +1,6 @@
 package config
 
 import (
-	"encoding/json"
-	"fmt"
-
-	"github.com/davecgh/go-spew/spew"
 	"github.com/kaptinlin/gozod"
 	"github.com/pelletier/go-toml/v2"
 )
@@ -20,8 +16,7 @@ type Actions struct {
 
 func Load(data []byte) (Config, error) {
 	var v any
-	err := toml.Unmarshal(data, &v)
-	if err != nil {
+	if err := toml.Unmarshal(data, &v); err != nil {
 		return Config{}, err
 	}
 	schema := gozod.FromStruct[Config](gozod.WithFieldNameTag("toml"))
@@ -29,12 +24,12 @@ func Load(data []byte) (Config, error) {
 	if err != nil {
 		panic(err)
 	}
-	jsData, err := json.MarshalIndent(jsonSchema, "", "  ")
-	if err != nil {
-		panic(err)
+	if ev := jsonSchema.Validate(v); !ev.IsValid() {
+		return Config{}, newValidationError(ev.DetailedErrors())
 	}
-	fmt.Println(string(jsData))
-	ev := jsonSchema.Validate(v)
-	spew.Dump(ev.ToList())
-	return Config{}, nil
+	var cfg Config
+	if err := toml.Unmarshal(data, &cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
 }

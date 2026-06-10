@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/deemson/gbx/internal/config"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/stretchr/testify/suite"
@@ -67,10 +66,15 @@ func (s *ConfigSuite) TestBadTOML() {
 func (s *ConfigSuite) TestValidation() {
 	testCases := map[string]struct {
 		cfg []string
+		err []string
 	}{
 		"unknown field at root": {
 			cfg: []string{
 				"unknown = 42",
+			},
+			err: []string{
+				"actions: required field is missing",
+				"unknown: unknown field",
 			},
 		},
 		"unknown field in actions": {
@@ -78,13 +82,30 @@ func (s *ConfigSuite) TestValidation() {
 				"[actions]",
 				"unknown = 42",
 			},
+			err: []string{
+				"actions.enter: required field is missing",
+				"actions.shift-enter: required field is missing",
+				"actions.unknown: unknown field",
+			},
+		},
+		"wrong type": {
+			cfg: []string{
+				"[actions]",
+				`enter = "lazygit"`,
+				`shift-enter = ["bash"]`,
+			},
+			err: []string{
+				"actions.enter: expected array, got string",
+			},
 		},
 	}
 	for name, testCase := range testCases {
 		s.T().Run(name, func(t *testing.T) {
 			_, err := config.Load([]byte(strings.Join(testCase.cfg, "\n")))
-			if s.Assert().Error(err) {
-				spew.Dump(err)
+			s.Require().Error(err)
+			var valErr *config.ValidationError
+			if s.Assert().ErrorAs(err, &valErr) {
+				s.Assert().Equal(strings.Join(testCase.err, "\n"), valErr.Error())
 			}
 		})
 	}
