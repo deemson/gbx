@@ -15,6 +15,7 @@ type FetchSuite struct {
 }
 
 func TestFetchSuite(t *testing.T) {
+	t.Parallel()
 	suite.Run(t, &FetchSuite{})
 }
 

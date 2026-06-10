@@ -14,6 +14,7 @@ type CheckoutSuite struct {
 }
 
 func TestCheckoutSuite(t *testing.T) {
+	t.Parallel()
 	suite.Run(t, &CheckoutSuite{})
 }
 

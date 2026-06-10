@@ -15,6 +15,7 @@ type PullSuite struct {
 }
 
 func TestPullSuite(t *testing.T) {
+	t.Parallel()
 	suite.Run(t, &PullSuite{})
 }
 

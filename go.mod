@@ -1,6 +1,6 @@
 module github.com/deemson/gbx
 
-go 1.26.2
+go 1.26.4
 
 require (
 	charm.land/bubbles/v2 v2.1.0
@@ -9,9 +9,25 @@ require (
 	github.com/adrg/xdg v0.5.3
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.7
+	github.com/davecgh/go-spew v1.1.1
+	github.com/pelletier/go-toml/v2 v2.3.1
 	github.com/rs/zerolog v1.35.1
 	github.com/sahilm/fuzzy v0.1.2
 	github.com/stretchr/testify v1.11.1
+)
+
+require (
+	github.com/agentable/go-intl v0.2.6 // indirect
+	github.com/cockroachdb/apd/v3 v3.2.3 // indirect
+	github.com/go-json-experiment/json v0.0.0-20260601182631-00ed12fed2a6 // indirect
+	github.com/goccy/go-yaml v1.19.2 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
+	github.com/kaptinlin/deepclone v0.2.17-0.20260603075657-1d294e385e78 // indirect
+	github.com/kaptinlin/go-i18n v0.4.10 // indirect
+	github.com/kaptinlin/jsonpointer v0.4.26 // indirect
+	github.com/kaptinlin/jsonschema v0.7.18-0.20260604143708-3e0b491a7296 // indirect
+	github.com/kaptinlin/messageformat-go v0.6.5 // indirect
+	golang.org/x/text v0.37.0 // indirect
 )
 
 require (
@@ -22,7 +38,7 @@ require (
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/kaptinlin/gozod v0.11.6
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
