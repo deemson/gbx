@@ -9,7 +9,6 @@ require (
 	github.com/adrg/xdg v0.5.3
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.7
-	github.com/davecgh/go-spew v1.1.1
 	github.com/pelletier/go-toml/v2 v2.3.1
 	github.com/rs/zerolog v1.35.1
 	github.com/sahilm/fuzzy v0.1.2
@@ -19,6 +18,7 @@ require (
 require (
 	github.com/agentable/go-intl v0.2.6 // indirect
 	github.com/cockroachdb/apd/v3 v3.2.3 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-json-experiment/json v0.0.0-20260601182631-00ed12fed2a6 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
