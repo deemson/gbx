@@ -4,13 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/adrg/xdg"
 	"github.com/deemson/gbx/internal/clilog"
 	"github.com/deemson/gbx/internal/config"
 	"github.com/deemson/gbx/internal/tui"
+	"github.com/deemson/gbx/internal/xdg"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -41,6 +42,9 @@ func Main(version string) {
 			zerolog.TimeFieldFormat = time.RFC3339Nano
 			logPath, err := xdg.StateFile(fmt.Sprintf("gbx/gbx-%d.log", os.Getpid()))
 			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
 				return err
 			}
 			logFile, err := os.OpenFile(logPath, os.O_TRUNC|os.O_WRONLY|os.O_CREATE, 0644)

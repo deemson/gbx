@@ -5,18 +5,16 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/adrg/xdg"
 	"github.com/deemson/gbx/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
-// useTempConfigHome points XDG at a fresh temp dir for the duration of the test
-// and returns the resolved config.toml / schema.json paths.
+// useTempConfigHome points XDG_CONFIG_HOME at a fresh temp dir for the duration
+// of the test and returns the resolved config.toml / schema.json paths.
 func useTempConfigHome(t *testing.T) (configPath, schemaPath string) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
-	xdg.Reload()
 	return filepath.Join(dir, "gbx", "config.toml"), filepath.Join(dir, "gbx", "schema.json")
 }
 

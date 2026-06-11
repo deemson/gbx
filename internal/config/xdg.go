@@ -2,9 +2,11 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
+	"path/filepath"
 
-	"github.com/adrg/xdg"
+	"github.com/deemson/gbx/internal/xdg"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -14,11 +16,14 @@ const (
 )
 
 func Find() (string, Config, error) {
-	configPath, err := xdg.SearchConfigFile(xdgConfigRelPath)
+	configPath, err := xdg.ConfigFile(xdgConfigRelPath)
 	if err != nil {
-		return "", Config{}, ErrNotFound
+		return "", Config{}, err
 	}
 	f, err := os.Open(configPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return configPath, Config{}, ErrNotFound
+	}
 	if err != nil {
 		return configPath, Config{}, err
 	}
@@ -56,6 +61,9 @@ func WriteDefault(force bool) ([]string, error) {
 	}
 	configData, err := toml.Marshal(Default())
 	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 		return nil, err
 	}
 	if err := os.WriteFile(configPath, configData, 0644); err != nil {
