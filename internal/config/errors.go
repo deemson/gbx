@@ -14,14 +14,14 @@ var (
 	ErrNotFound = errors.New("not found")
 )
 
-// FileExistsError reports that WriteDefault refused to write because a target
-// file already exists and --force was not given. Path is the offending file.
+// FileExistsError reports that WriteDefault refused to overwrite an existing
+// target file. Path is the offending file.
 type FileExistsError struct {
 	Path string
 }
 
 func (e *FileExistsError) Error() string {
-	return e.Path + " already exists (use --force to overwrite)"
+	return e.Path + " already exists"
 }
 
 // TOMLError adapts a go-toml decode error so its Error() is the pretty,

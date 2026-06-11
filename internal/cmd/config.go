@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/deemson/gbx/internal/clilog"
 	"github.com/deemson/gbx/internal/config"
 	"github.com/spf13/cobra"
@@ -24,6 +27,10 @@ func configWriteDefaultCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			force, _ := cmd.Flags().GetBool("force")
 			paths, err := config.WriteDefault(force)
+			var existsErr *config.FileExistsError
+			if errors.As(err, &existsErr) {
+				return fmt.Errorf("%w (use --force to overwrite)", err)
+			}
 			if err != nil {
 				return err
 			}
