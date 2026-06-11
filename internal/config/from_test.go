@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/deemson/gbx/internal/config"
-	"github.com/pelletier/go-toml/v2"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -21,43 +20,28 @@ func TestFromBytesSuite(t *testing.T) {
 func (s *FromBytesSuite) TestBadTOML() {
 	testCases := map[string]struct {
 		cfg []string
-		err []string
+		err string
 	}{
 		"bad number": {
-			cfg: []string{
-				"key = value",
-			},
-			err: []string{
-				"1| key = value",
-				" |       ~~~~~ incomplete number",
-			},
+			cfg: []string{"key = value"},
+			err: "line 1, column 7: incomplete number",
 		},
 		"non-terminated string": {
-			cfg: []string{
-				`key = "value`,
-			},
-			err: []string{
-				`1| key = "value`,
-				` |  basic string not terminated by "`,
-			},
+			cfg: []string{`key = "value`},
+			err: `line 1, column 1: basic string not terminated by "`,
 		},
-		"asd": {
-			cfg: []string{
-				"[key",
-			},
-			err: []string{
-				"1| [key",
-				" |  expected character ] but the document ended here",
-			},
+		"unterminated table header": {
+			cfg: []string{"[key"},
+			err: "line 1, column 1: expected character ] but the document ended here",
 		},
 	}
 	for name, testCase := range testCases {
 		s.T().Run(name, func(t *testing.T) {
 			_, err := config.FromBytes([]byte(strings.Join(testCase.cfg, "\n")))
 			s.Require().Error(err)
-			var tomlErr *toml.DecodeError
+			var tomlErr *config.TOMLError
 			if s.Assert().ErrorAs(err, &tomlErr) {
-				s.Assert().Equal(strings.Join(testCase.err, "\n"), tomlErr.String())
+				s.Assert().Equal(testCase.err, tomlErr.Error())
 			}
 		})
 	}

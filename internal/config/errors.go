@@ -24,14 +24,20 @@ func (e *FileExistsError) Error() string {
 	return e.Path + " already exists"
 }
 
-// TOMLError adapts a go-toml decode error so its Error() is the pretty,
-// multi-line caret-annotated block (DecodeError.String()) rather than the terse
-// one-liner. It unwraps to the underlying *toml.DecodeError.
+// TOMLError adapts a go-toml decode error into a concise one-line message with
+// the position prefixed ("line R, column C: msg"), since DecodeError.Error()
+// omits the position and DecodeError.String()'s multi-line code frame mangles
+// multi-line spans. It unwraps to the underlying *toml.DecodeError.
 type TOMLError struct {
 	err *toml.DecodeError
 }
 
-func (e *TOMLError) Error() string { return e.err.String() }
+func (e *TOMLError) Error() string {
+	row, col := e.err.Position()
+	msg := strings.TrimPrefix(e.err.Error(), "toml: ")
+	return fmt.Sprintf("line %d, column %d: %s", row, col, msg)
+}
+
 func (e *TOMLError) Unwrap() error { return e.err }
 
 // Issue is a single human-readable config problem at a dotted path.
