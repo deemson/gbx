@@ -1,10 +1,15 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
 	"strings"
+)
+
+var (
+	ErrNotFound = errors.New("not found")
 )
 
 // Issue is a single human-readable config problem at a dotted path.

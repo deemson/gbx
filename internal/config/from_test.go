@@ -9,16 +9,16 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-type ConfigSuite struct {
+type FromBytesSuite struct {
 	suite.Suite
 }
 
-func TestConfigSuite(t *testing.T) {
+func TestFromBytesSuite(t *testing.T) {
 	t.Parallel()
-	suite.Run(t, &ConfigSuite{})
+	suite.Run(t, &FromBytesSuite{})
 }
 
-func (s *ConfigSuite) TestBadTOML() {
+func (s *FromBytesSuite) TestBadTOML() {
 	testCases := map[string]struct {
 		cfg []string
 		err []string
@@ -53,7 +53,7 @@ func (s *ConfigSuite) TestBadTOML() {
 	}
 	for name, testCase := range testCases {
 		s.T().Run(name, func(t *testing.T) {
-			_, err := config.Load([]byte(strings.Join(testCase.cfg, "\n")))
+			_, err := config.FromBytes([]byte(strings.Join(testCase.cfg, "\n")))
 			s.Require().Error(err)
 			var tomlErr *toml.DecodeError
 			if s.Assert().ErrorAs(err, &tomlErr) {
@@ -63,7 +63,7 @@ func (s *ConfigSuite) TestBadTOML() {
 	}
 }
 
-func (s *ConfigSuite) TestValidation() {
+func (s *FromBytesSuite) TestValidation() {
 	testCases := map[string]struct {
 		cfg []string
 		err []string
@@ -101,7 +101,7 @@ func (s *ConfigSuite) TestValidation() {
 	}
 	for name, testCase := range testCases {
 		s.T().Run(name, func(t *testing.T) {
-			_, err := config.Load([]byte(strings.Join(testCase.cfg, "\n")))
+			_, err := config.FromBytes([]byte(strings.Join(testCase.cfg, "\n")))
 			s.Require().Error(err)
 			var valErr *config.ValidationError
 			if s.Assert().ErrorAs(err, &valErr) {
