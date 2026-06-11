@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/deemson/gbx/internal/config"
@@ -26,6 +27,14 @@ func TestWriteDefaultFresh(t *testing.T) {
 	require.Equal(t, []string{configPath, schemaPath}, paths)
 	require.FileExists(t, configPath)
 	require.FileExists(t, schemaPath)
+
+	data, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(string(data), "#:schema ./schema.json\n"),
+		"config.toml should open with the schema directive, got:\n%s", data)
+	// The directive is a TOML comment, so the file still parses.
+	_, err = config.FromBytes(data)
+	require.NoError(t, err)
 }
 
 func TestWriteDefaultRefusesWhenExists(t *testing.T) {

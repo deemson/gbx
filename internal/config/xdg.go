@@ -63,6 +63,9 @@ func WriteDefault(force bool) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Prepend the schema directive editors (Taplo, etc.) read to validate against
+	// the companion schema.json written alongside this file.
+	configData = append([]byte("#:schema ./"+filepath.Base(xdgSchemaRelPath)+"\n"), configData...)
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 		return nil, err
 	}
