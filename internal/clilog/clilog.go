@@ -14,11 +14,18 @@ import (
 )
 
 func log(w io.Writer, level string, message string) {
-	fmt.Fprintln(w, strings.Join([]string{
+	prefix := strings.Join([]string{
 		color.HiBlackString(time.Now().Format(time.TimeOnly)),
 		level,
-		message,
-	}, " "))
+		"",
+	}, " ")
+	// Indent continuation lines of a multi-line message to the message column so
+	// the prefix isn't repeated and any internal alignment (e.g. a TOML decode
+	// error's caret block) survives. The visible prefix width is fixed regardless
+	// of color codes: TimeOnly (8) + space + level (1) + space = 11.
+	indent := strings.Repeat(" ", 11)
+	message = strings.ReplaceAll(message, "\n", "\n"+indent)
+	fmt.Fprintln(w, prefix+message)
 }
 
 func Info(message string) {

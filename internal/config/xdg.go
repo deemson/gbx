@@ -30,30 +30,39 @@ func Find() (string, Config, error) {
 	return configPath, cfg, nil
 }
 
-func WriteDefault() error {
-	jsonSchemaData, err := json.MarshalIndent(jsonSchema, "", "  ")
+// WriteDefault writes the default config.toml and its companion schema.json to
+// the primary XDG config dir, returning the paths written. Unless force is set,
+// it refuses (writing nothing) and returns a *FileExistsError if either target
+// already exists.
+func WriteDefault(force bool) ([]string, error) {
+	configPath, err := xdg.ConfigFile(xdgConfigRelPath)
 	if err != nil {
-		return err
-	}
-	configData, err := toml.Marshal(Default())
-	if err != nil {
-		return err
+		return nil, err
 	}
 	schemaPath, err := xdg.ConfigFile(xdgSchemaRelPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	configPath, err := xdg.ConfigFile(xdgConfigRelPath)
+	if !force {
+		for _, path := range []string{configPath, schemaPath} {
+			if _, err := os.Stat(path); err == nil {
+				return nil, &FileExistsError{Path: path}
+			}
+		}
+	}
+	jsonSchemaData, err := json.MarshalIndent(jsonSchema, "", "  ")
 	if err != nil {
-		return err
+		return nil, err
 	}
-	err = os.WriteFile(schemaPath, jsonSchemaData, 0644)
+	configData, err := toml.Marshal(Default())
 	if err != nil {
-		return err
+		return nil, err
 	}
-	err = os.WriteFile(configPath, configData, 0644)
-	if err != nil {
-		return err
+	if err := os.WriteFile(configPath, configData, 0644); err != nil {
+		return nil, err
 	}
-	return nil
+	if err := os.WriteFile(schemaPath, jsonSchemaData, 0644); err != nil {
+		return nil, err
+	}
+	return []string{configPath, schemaPath}, nil
 }

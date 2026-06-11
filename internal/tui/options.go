@@ -1,9 +1,12 @@
 package tui
 
+import appconfig "github.com/deemson/gbx/internal/config"
+
 type config struct {
-	dir     string
-	version string
-	logPath string
+	dir       string
+	version   string
+	logPath   string
+	appConfig appconfig.Config
 }
 
 type Option func(*config)
@@ -24,4 +27,10 @@ func WithVersion(version string) Option {
 // canonical path (xdg.StateFile), so it passes the same value it writes to.
 func WithLogPath(path string) Option {
 	return func(c *config) { c.logPath = path }
+}
+
+// WithConfig sets the loaded application config (the action command set). The
+// model stores it; it is not yet consumed by any key handler.
+func WithConfig(cfg appconfig.Config) Option {
+	return func(c *config) { c.appConfig = cfg }
 }

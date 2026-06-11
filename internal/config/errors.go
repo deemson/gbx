@@ -6,11 +6,33 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/pelletier/go-toml/v2"
 )
 
 var (
 	ErrNotFound = errors.New("not found")
 )
+
+// FileExistsError reports that WriteDefault refused to write because a target
+// file already exists and --force was not given. Path is the offending file.
+type FileExistsError struct {
+	Path string
+}
+
+func (e *FileExistsError) Error() string {
+	return e.Path + " already exists (use --force to overwrite)"
+}
+
+// TOMLError adapts a go-toml decode error so its Error() is the pretty,
+// multi-line caret-annotated block (DecodeError.String()) rather than the terse
+// one-liner. It unwraps to the underlying *toml.DecodeError.
+type TOMLError struct {
+	err *toml.DecodeError
+}
+
+func (e *TOMLError) Error() string { return e.err.String() }
+func (e *TOMLError) Unwrap() error { return e.err }
 
 // Issue is a single human-readable config problem at a dotted path.
 type Issue struct {

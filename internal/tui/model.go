@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	appconfig "github.com/deemson/gbx/internal/config"
 	"github.com/deemson/gbx/internal/git"
 )
 
@@ -91,6 +92,10 @@ type model struct {
 	// logPath is the per-PID log file, shown in the help overlay's header so a
 	// failed session can be found. Set from WithLogPath (main.go owns the path).
 	logPath string
+
+	// appConfig is the loaded action command set (set from WithConfig). Stored
+	// for later use; no key handler consumes it yet.
+	appConfig appconfig.Config
 
 	// help is the scrollable viewport for the ? overlay. Its content is static
 	// (the bindings), set once; it's resized on every WindowSizeMsg and reset to
