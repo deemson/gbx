@@ -58,9 +58,6 @@ func Main(version string) {
 			if err != nil {
 				return err
 			}
-			if len(os.Args) > 1 {
-				dir = os.Args[1]
-			}
 
 			// The log is the post-mortem surface: it's removed on a clean exit, but kept
 			// (renamed "-crash.log") when the TUI returns an error so the session that

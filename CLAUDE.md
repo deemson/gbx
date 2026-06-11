@@ -23,8 +23,8 @@ of git commands across them.
   re-reading; a command's own follow-up refresh keeps it. The error is also
   logged to the per-PID log file (see **Logging**). There is **no output pane** — the typed errors are the
   surface.
-- **Discovery:** scan the *immediate* subdirectories of one root dir (CLI arg,
-  default cwd); each that is a git repo becomes a row. No recursion, no config
+- **Discovery:** scan the *immediate* subdirectories of the current working
+  directory; each that is a git repo becomes a row. No recursion, no config
   file.
 - A command acts on **the repos currently matching the filter** — no marking /
   multi-select, and **no confirmation step**. Clearing the filter targets all.
@@ -48,7 +48,7 @@ of git commands across them.
   wrong (imports, `Update`/`View` signatures, message types all differ), so read
   the closest example's `main.go` instead of guessing; `go doc` on the pinned
   module for exact signatures.
-- `main.go` — wires logging (see **Logging**) and runs the TUI with the root dir.
+- `main.go` — wires logging (see **Logging**) and runs the TUI on the cwd.
 
 ## Conventions
 
@@ -94,7 +94,7 @@ of git commands across them.
 
 ## Build / run / test
 
-- `go build` → `./gbx`; run `./gbx [root-dir]` (default: cwd). The header
+- `go build` → `./gbx`; run `./gbx` (scans the cwd). The header
   version shows `dev` for a plain build; release builds stamp it via
   `go build -ldflags "-X main.version=v1.2.3"`.
 - `go test ./...`
