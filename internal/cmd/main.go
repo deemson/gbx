@@ -27,13 +27,15 @@ func Main(version string) {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			_, loaded, err := config.Find()
+			path, loaded, err := config.Find()
 			if errors.Is(err, config.ErrNotFound) {
 				cfg = config.Default() // absent config → silent defaults
 				return nil
 			}
 			if err != nil {
-				return err // present but unreadable/invalid → hard fail
+				// Frame the typed TOML/validation detail with the offending file
+				// so it's clear the problem is the config, not gbx itself.
+				return fmt.Errorf("invalid config %s:\n%w", path, err)
 			}
 			cfg = loaded
 			return nil
