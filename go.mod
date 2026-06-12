@@ -15,6 +15,7 @@ require (
 	github.com/sahilm/fuzzy v0.1.2
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
+	github.com/valyala/fasttemplate v1.2.2
 )
 
 require (
@@ -30,6 +31,7 @@ require (
 	github.com/kaptinlin/jsonpointer v0.4.26 // indirect
 	github.com/kaptinlin/messageformat-go v0.6.5 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 )
 
