@@ -917,7 +917,7 @@ func (m model) listContent() string {
 		if hlBranch && r.status != nil {
 			branch = renderHighlight(r.status.branch, matchPositions(terms, r.status.branch), branchStyle(r.status.branch))
 		}
-		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(name), "  ", branchCol.Render(branch), "  ", trackingCol.Render(trackingText(r)), "  ", stateCol.Render(stateText(r)), "  ", diffCol.Render(diffText(r))}
+		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(name), "  ", trackingCol.Render(trackingText(r)), "  ", branchCol.Render(branch), "  ", stateCol.Render(stateText(r)), "  ", diffCol.Render(diffText(r))}
 		if s := r.summary(); s != "" {
 			prefix := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
 			if m.width > 0 {
