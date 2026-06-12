@@ -21,6 +21,8 @@ type keyBinding struct {
 // keys are explained.
 var listBindings = []keyBinding{
 	{"?", "toggle this help"},
+	{"↑/↓ ctrl+p/ctrl+n", "move the cursor"},
+	{"enter", "open the actions menu for the cursored repo"},
 	{"ctrl+f", "filter prompt"},
 	{"r", "refresh filtered repos"},
 	{"f", "fetch on filtered repos"},
@@ -32,6 +34,14 @@ var listBindings = []keyBinding{
 	{"ctrl+3", "filter field: branch"},
 	{"q", "quit"},
 	{"ctrl+c", "quit (any mode)"},
+}
+
+// actionMenuBindings document the enter-key digit menu: each configured action
+// is bound to its 1-based digit and runs in the cursored repo's directory,
+// suspending gbx until the launched tool exits.
+var actionMenuBindings = []keyBinding{
+	{"1-9", "run that action in the cursored repo's directory"},
+	{"esc / enter / q", "close without running anything"},
 }
 
 // promptBindings document the shared behavior of the ctrl+f / c / b prompts.
@@ -61,6 +71,7 @@ var filterSyntax = []keyBinding{
 // by mode. They carry shorter labels than the ? overlay above (a footer is one
 // line, truncated to width), so they're a separate, deliberately terse surface.
 var footerListBindings = []keyBinding{
+	{"enter", "actions"},
 	{"r", "refresh"},
 	{"f", "fetch"},
 	{"p", "pull"},
@@ -81,6 +92,11 @@ var footerArgBindings = []keyBinding{
 	{"enter", "apply"},
 	{"esc", "clear/close"},
 	{"tab/shift+tab", "cycle"},
+}
+
+var footerActionBindings = []keyBinding{
+	{"1-9", "run"},
+	{"esc", "cancel"},
 }
 
 // helpHeading styles a section header — cyan bold, the app's accent (the active
@@ -108,6 +124,8 @@ func helpContent() string {
 		}
 	}
 	section("list mode", listBindings)
+	b.WriteString("\n")
+	section("actions menu (enter)", actionMenuBindings)
 	b.WriteString("\n")
 	section("prompts (ctrl+f filter · c Checkout · b New Branch)", promptBindings)
 	b.WriteString("\n")

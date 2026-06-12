@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	appconfig "github.com/deemson/gbx/internal/config"
 	"github.com/deemson/gbx/internal/git"
 	"github.com/stretchr/testify/require"
 )
@@ -342,10 +343,11 @@ func TestHelpShowsPIDAndLogPath(t *testing.T) {
 // and the always-visible footer shows list-mode action keys.
 func TestHeaderHintAndListFooter(t *testing.T) {
 	m := newModel("x").addRepo("a", git.Repo{})
-	m = drive(t, m, tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = drive(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	out := ansi.Strip(m.View().Content)
 	require.Contains(t, out, "<C-f> Filter:")
+	require.Contains(t, out, "enter actions")
 	require.Contains(t, out, "r refresh")
 	require.Contains(t, out, "c checkout")
 	require.Contains(t, out, "q quit")
@@ -602,6 +604,121 @@ func TestErrorColumnAlignsAcrossDiffStates(t *testing.T) {
 	require.Equal(t, idxA, idxB) // error starts at the same column despite differing diff
 }
 
+func TestCursorMovesAndClamps(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{}).addRepo("b", git.Repo{}).addRepo("c", git.Repo{})
+	require.Equal(t, 0, m.cursorIndex()) // starts at the top
+
+	m = drive(t, m, keyDown, keyDown) // 0 -> 2
+	require.Equal(t, 2, m.cursorIndex())
+	m = drive(t, m, keyDown) // clamps at the last row
+	require.Equal(t, 2, m.cursorIndex())
+	m = drive(t, m, keyUp, keyUp, keyUp) // clamps at the top
+	require.Equal(t, 0, m.cursorIndex())
+}
+
+func TestCursorClampsWhenFilterNarrows(t *testing.T) {
+	m := newModel("x").addRepo("alpha", git.Repo{}).addRepo("beta", git.Repo{}).addRepo("gamma", git.Repo{})
+	m = drive(t, m, keyDown, keyDown) // cursor on the last row
+	require.Equal(t, "gamma", m.matched()[m.cursorIndex()].name)
+
+	opened, _ := m.Update(keyCtrlF)
+	m = opened.(model)
+	m = send(t, m, "alpha") // narrows to a single match
+	applied, _ := m.Update(keyEnter)
+	m = applied.(model)
+
+	require.Equal(t, 0, m.cursorIndex()) // clamped down to the surviving row
+	require.Equal(t, "alpha", m.matched()[m.cursorIndex()].name)
+}
+
+func TestCursorBandsOnlyTheCursoredRow(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{}).addRepo("b", git.Repo{})
+
+	lines := strings.Split(m.listContent(), "\n")
+	require.Contains(t, lines[0], cursorBandSeq) // cursor starts on the first row
+	require.NotContains(t, lines[1], cursorBandSeq)
+
+	m = drive(t, m, keyDown)
+	lines = strings.Split(m.listContent(), "\n")
+	require.NotContains(t, lines[0], cursorBandSeq)
+	require.Contains(t, lines[1], cursorBandSeq) // band follows the cursor down
+}
+
+func TestEnterOpensActionMenuOverCursor(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+	m.appConfig = appconfig.Config{Actions: []appconfig.Action{{Label: "lazygit", Command: []string{"lazygit"}}}}
+
+	opened, _ := m.Update(keyEnter)
+	require.Equal(t, modeActionMenu, opened.(model).mode)
+}
+
+func TestActionMenuOverlayRendersTitleAndLabels(t *testing.T) {
+	m := newModel("x").addRepo("myrepo", git.Repo{})
+	m.appConfig = appconfig.Config{Actions: []appconfig.Action{
+		{Label: "lazygit", Command: []string{"lazygit"}},
+		{Label: "shell", Command: []string{"sh"}},
+	}}
+	m = drive(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	opened, _ := m.Update(keyEnter)
+	m = opened.(model)
+	out := ansi.Strip(m.View().Content)
+	require.Contains(t, out, "Actions — myrepo") // titled with the cursored repo
+	require.Contains(t, out, "lazygit")
+	require.Contains(t, out, "shell")
+}
+
+func TestEnterWithNoMatchesIsNoop(t *testing.T) {
+	m := newModel("x") // no repos discovered yet
+	opened, _ := m.Update(keyEnter)
+	require.Equal(t, modeList, opened.(model).mode)
+}
+
+func TestActionMenuEscCloses(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+	m.mode = modeActionMenu
+
+	closed, _ := m.Update(keyEsc)
+	require.Equal(t, modeList, closed.(model).mode)
+}
+
+func TestActionDigitFiresAndCloses(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+	m.appConfig = appconfig.Config{Actions: []appconfig.Action{{Label: "noop", Command: []string{"true"}}}}
+	m.mode = modeActionMenu
+
+	fired, cmd := m.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
+	require.Equal(t, modeList, fired.(model).mode) // closes the instant it fires
+	require.NotNil(t, cmd)                          // ExecProcess scheduled
+}
+
+func TestActionOutOfRangeDigitIgnored(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+	m.appConfig = appconfig.Config{Actions: []appconfig.Action{{Label: "noop", Command: []string{"true"}}}}
+	m.mode = modeActionMenu
+
+	ignored, cmd := m.Update(tea.KeyPressMsg{Code: '2', Text: "2"}) // only one action exists
+	require.Equal(t, modeActionMenu, ignored.(model).mode)         // menu stays open
+	require.Nil(t, cmd)
+}
+
+func TestActionInterpolationErrorSurfacesAsRowError(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+	m.appConfig = appconfig.Config{Actions: []appconfig.Action{
+		{Label: "shell", Command: []string{"{{ env.GBX_DEFINITELY_UNSET }}"}},
+	}}
+	m.mode = modeActionMenu
+
+	fired, cmd := m.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
+	m = fired.(model)
+	require.Equal(t, modeList, m.mode)
+	require.NotNil(t, cmd) // nothing launched; the cmd carries the failure back
+
+	m = drive(t, m, cmd()) // feed the cmdDoneMsg it produced
+	require.Equal(t, cmdFailed, m.repos[0].cmd)
+	require.Contains(t, m.repos[0].summary(), "is not set")
+}
+
 func TestEmptyDiffHidesChurn(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 	m = m.setStatus("r", repoStatus{branch: "main", hasUpstream: true})
@@ -611,4 +728,48 @@ func TestEmptyDiffHidesChurn(t *testing.T) {
 
 	m = m.setDiff("r", lineChanges{added: 2}) // non-empty → shown
 	require.Contains(t, ansi.Strip(m.listContent()), "+2 -0")
+}
+
+func TestNarrowWidthTruncatesNameAndBranch(t *testing.T) {
+	m := newModel("x").addRepo("a-very-long-repo-name", git.Repo{})
+	m = m.setStatus("a-very-long-repo-name", repoStatus{branch: "a-very-long-branch-name", hasUpstream: true})
+	m = drive(t, m, tea.WindowSizeMsg{Width: 40, Height: 24})
+
+	lines := strings.Split(ansi.Strip(m.listContent()), "\n")
+	require.Len(t, lines, 1)
+	require.LessOrEqual(t, ansi.StringWidth(lines[0]), 40) // row shrinks to fit the terminal
+	require.Contains(t, lines[0], "…")                     // an elastic column was truncated
+}
+
+func TestTooNarrowReplacesScreenWithMessage(t *testing.T) {
+	m := newModel("x").addRepo("repo", git.Repo{})
+	m = drive(t, m, tea.WindowSizeMsg{Width: 10, Height: 24})
+
+	require.True(t, m.tooNarrow())
+	out := ansi.Strip(m.View().Content)
+	require.Contains(t, out, "terminal too narrow")
+	require.NotContains(t, out, "repo") // the list is gone, not just narrowed
+}
+
+func TestFooterShedsHintsKeepingHelp(t *testing.T) {
+	m := newModel("x").addRepo("repo", git.Repo{})
+	m = drive(t, m, tea.WindowSizeMsg{Width: 30, Height: 24}) // renderable, but too narrow for the full footer
+
+	footer := ansi.Strip(m.footerLine())
+	require.LessOrEqual(t, ansi.StringWidth(footer), 30)
+	require.Contains(t, footer, "? help")  // pinned hint survives the shedding
+	require.NotContains(t, footer, "quit") // a tail hint is dropped whole, not ellipsized
+}
+
+func TestHeaderDropsCornerWhenNarrow(t *testing.T) {
+	m := newModel("x").addRepo("repo", git.Repo{})
+	m.version = "1.2.3"
+
+	wide := drive(t, m, tea.WindowSizeMsg{Width: 120, Height: 24})
+	require.True(t, wide.showCorner())
+	require.Contains(t, ansi.Strip(wide.listView()), "gbx 1.2.3")
+
+	narrow := drive(t, m, tea.WindowSizeMsg{Width: 30, Height: 24})
+	require.False(t, narrow.showCorner())
+	require.NotContains(t, ansi.Strip(narrow.listView()), "gbx 1.2.3")
 }

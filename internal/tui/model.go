@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/deemson/gbx/internal/cmdxtmpl"
 	appconfig "github.com/deemson/gbx/internal/config"
 	"github.com/deemson/gbx/internal/git"
 )
@@ -46,7 +47,8 @@ type loadFailedMsg struct {
 // uiMode is which screen has key focus. modeList is the default — letter keys
 // trigger commands directly; ?/ctrl+f/c/b open transient overlays. The three
 // *Prompt modes own the header's top-row text input; modeHelp is the alt-screen
-// bindings overlay.
+// bindings overlay; modeActionMenu is the enter-key digit menu floated over the
+// cursored repo.
 type uiMode int
 
 const (
@@ -55,6 +57,7 @@ const (
 	modeCheckoutPrompt
 	modeBranchPrompt
 	modeHelp
+	modeActionMenu
 )
 
 // model is the root TUI model. List mode is the default state; letter keys
@@ -70,6 +73,11 @@ type model struct {
 	field  filterField
 	width  int
 	height int
+
+	// cursor indexes the matched (filtered, ranked) row set — the row the enter
+	// menu acts on. It rides the visible list by position (clamped to range), so
+	// narrowing the filter leaves it on whatever now sits at that slot.
+	cursor int
 
 	// filter is the committed filter pattern applied to the visible row set
 	// while in list mode (and while c/b prompts are open). The filter prompt's
@@ -93,8 +101,8 @@ type model struct {
 	// failed session can be found. Set from WithLogPath (main.go owns the path).
 	logPath string
 
-	// appConfig is the loaded action command set (set from WithConfig). Stored
-	// for later use; no key handler consumes it yet.
+	// appConfig is the loaded action command set (set from WithConfig). The enter
+	// menu lists appConfig.Actions and runs the chosen one in the cursored repo.
 	appConfig appconfig.Config
 
 	// help is the scrollable viewport for the ? overlay. Its content is static
@@ -236,6 +244,8 @@ func (m model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return nm, cmd
 	case modeHelp:
 		return m.updateHelp(msg)
+	case modeActionMenu:
+		return m.updateActionMenu(msg)
 	}
 	return m.updateList(msg)
 }
@@ -249,6 +259,14 @@ func (m model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeHelp
 		m.help.GotoTop()
 		return m, nil
+	case "up", "ctrl+p":
+		m.cursor--
+		return m.clampCursor(), nil
+	case "down", "ctrl+n":
+		m.cursor++
+		return m.clampCursor(), nil
+	case "enter":
+		return m.openActionMenu()
 	case "ctrl+f":
 		return m.openFilterPrompt()
 	case "q":
@@ -459,6 +477,82 @@ func (m model) updateHelp(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.help, cmd = m.help.Update(msg)
 	return m, cmd
+}
+
+// openActionMenu floats the enter-key digit menu over the cursored repo. A no-op
+// when nothing is matched (there's no row to act on); otherwise it pins the
+// cursor into range first so the menu titles the row it will actually run on.
+func (m model) openActionMenu() (model, tea.Cmd) {
+	if len(m.matched()) == 0 {
+		return m, nil
+	}
+	m = m.clampCursor()
+	m.mode = modeActionMenu
+	return m, nil
+}
+
+// updateActionMenu handles keys with the action menu open. esc/enter/q dismiss
+// it; a digit 1–9 mapping to an existing action fires it immediately in the
+// cursored repo's directory (out-of-range digits are ignored). The menu closes
+// the instant an action fires — the TUI is then suspended by ExecProcess.
+func (m model) updateActionMenu(msg tea.KeyPressMsg) (model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "enter", "q":
+		m.mode = modeList
+		return m, nil
+	}
+	if s := msg.String(); len(s) == 1 && s[0] >= '1' && s[0] <= '9' {
+		if idx := int(s[0] - '1'); idx < len(m.appConfig.Actions) {
+			m.mode = modeList
+			return m.fireAction(idx)
+		}
+	}
+	return m, nil
+}
+
+// fireAction interpolates the chosen action's command against the env.* resolver
+// and runs it in the cursored repo's directory. An interpolation failure never
+// launches anything — it comes straight back as a row error via cmdDoneMsg.
+func (m model) fireAction(idx int) (model, tea.Cmd) {
+	ci := m.cursorIndex()
+	if ci < 0 {
+		return m, nil
+	}
+	r := m.matched()[ci]
+	argv, err := cmdxtmpl.Interpolate(m.appConfig.Actions[idx].Command, resolveTag)
+	if err != nil {
+		return m, func() tea.Msg { return cmdDoneMsg{name: r.name, err: err} }
+	}
+	return m, runAction(r.name, argv, r.repo.Path())
+}
+
+// clampCursor pins m.cursor into the matched set's current bounds (0 when empty),
+// keeping the stored position valid as movement and filtering change the list.
+func (m model) clampCursor() model {
+	n := len(m.matched())
+	switch {
+	case n == 0, m.cursor < 0:
+		m.cursor = 0
+	case m.cursor >= n:
+		m.cursor = n - 1
+	}
+	return m
+}
+
+// cursorIndex is the cursor's clamped index into the current matched set, or -1
+// when nothing matches. Reads defensively (the filter may have shrunk the set
+// since the stored cursor was last clamped) without mutating the model.
+func (m model) cursorIndex() int {
+	n := len(m.matched())
+	switch {
+	case n == 0:
+		return -1
+	case m.cursor < 0:
+		return 0
+	case m.cursor >= n:
+		return n - 1
+	}
+	return m.cursor
 }
 
 // effectiveFilter is the filter string used by matchedIndexes — the prompt's
@@ -725,44 +819,114 @@ func (m model) cycleSuggestion(delta int) model {
 }
 
 func (m model) View() tea.View {
+	if m.tooNarrow() {
+		return tea.View{Content: m.tooNarrowScreen(), AltScreen: true}
+	}
 	if m.mode == modeHelp {
 		content := lipgloss.JoinVertical(lipgloss.Left, m.helpHeader(), m.help.View(), m.helpFooter())
 		return tea.View{Content: content, AltScreen: true, MouseMode: tea.MouseModeCellMotion}
 	}
+	if m.mode == modeActionMenu {
+		return tea.View{Content: m.actionMenuOverlay(), AltScreen: true}
+	}
+	return tea.View{Content: m.listView(), AltScreen: true}
+}
+
+// listView composes the always-on screen: the framed header, the repo list sized
+// to fill the available height, and the footer. It's the list-mode content and
+// the backdrop the action menu floats over.
+func (m model) listView() string {
 	header := m.framedHeader(lipgloss.JoinVertical(lipgloss.Left, m.headerTop(), m.headerBottom()))
 	list := m.listContent()
 	footer := m.footer()
-
 	if m.height > 0 {
 		listHeight := m.height - 3 - lipgloss.Height(footer)
 		if listHeight < 1 {
 			listHeight = 1
 		}
 		listArea := lipgloss.NewStyle().Height(listHeight).Render(list)
-		return tea.View{Content: lipgloss.JoinVertical(lipgloss.Left, header, listArea, footer), AltScreen: true}
+		return lipgloss.JoinVertical(lipgloss.Left, header, listArea, footer)
 	}
-	return tea.View{Content: lipgloss.JoinVertical(lipgloss.Left, header, list, footer), AltScreen: true}
+	return lipgloss.JoinVertical(lipgloss.Left, header, list, footer)
+}
+
+// actionMenuOverlay composites the action box centered over the list view. The
+// list shows through behind it for context (which repo, what's around it).
+func (m model) actionMenuOverlay() string {
+	box := m.actionBox()
+	if m.width <= 0 || m.height <= 0 {
+		return box
+	}
+	x := (m.width - lipgloss.Width(box)) / 2
+	y := (m.height - lipgloss.Height(box)) / 2
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+	comp := lipgloss.NewCompositor(
+		lipgloss.NewLayer(m.listView()),
+		lipgloss.NewLayer(box).X(x).Y(y),
+	)
+	return comp.Render()
+}
+
+// actionBox renders the floating menu: an accent-bordered box titled with the
+// cursored repo, a digit-prefixed row per action, and a dim hint footer.
+func (m model) actionBox() string {
+	title := "Actions"
+	if ci := m.cursorIndex(); ci >= 0 {
+		title = "Actions — " + m.matched()[ci].name
+	}
+	rows := []string{colorCyan.Bold(true).Render(title), ""}
+	for i, a := range m.appConfig.Actions {
+		rows = append(rows, "  "+colorYellow.Render(strconv.Itoa(i+1))+"  "+a.Label)
+	}
+	rows = append(rows, "", colorDim.Render("1–9 run · esc cancel"))
+	body := lipgloss.JoinVertical(lipgloss.Left, rows...)
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("6")).
+		Padding(0, 1).
+		Render(body)
 }
 
 // framedHeader composes the top chrome shared by the list view and the help
 // overlay: the given left block beside the right-corner version/PID block, with
 // the full-width dim rule beneath. The left block is width-constrained so the
-// right block sits flush in the corner.
+// right block sits flush in the corner — but when the corner no longer fits
+// (showCorner), it's dropped and the left block takes the whole row.
 func (m model) framedHeader(left string) string {
-	right := m.rightBlock()
 	var topBlock string
-	if m.width > 0 {
+	switch {
+	case m.width <= 0:
+		topBlock = lipgloss.JoinHorizontal(lipgloss.Top, left, " ", m.rightBlock())
+	case m.showCorner():
+		right := m.rightBlock()
 		leftWidth := m.width - lipgloss.Width(right)
 		if leftWidth < 0 {
 			leftWidth = 0
 		}
 		left = lipgloss.NewStyle().Width(leftWidth).Render(left)
 		topBlock = lipgloss.JoinHorizontal(lipgloss.Top, left, right)
-	} else {
-		topBlock = lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+	default:
+		topBlock = left
 	}
 	rule := colorDim.Render(strings.Repeat("─", m.width))
 	return lipgloss.JoinVertical(lipgloss.Left, topBlock, rule)
+}
+
+// showCorner reports whether the version/PID corner block still fits beside the
+// header's intrinsic left content (the filter-field chips at their natural
+// width). Below that the corner is dropped so the left block — including the
+// elastic prompt input — gets the whole row. Keyed off the chips' fixed width,
+// not the elastic input, so it stays stable as the prompt fills.
+func (m model) showCorner() bool {
+	if m.width <= 0 {
+		return true
+	}
+	return m.width >= m.modesNaturalWidth()+lipgloss.Width(m.rightBlock())
 }
 
 // helpHeader is the help overlay's fixed top chrome: the dim "Log" label over
@@ -800,9 +964,10 @@ func (m model) footer() string {
 }
 
 // footerLine renders the always-on keybinding hints for the current mode in the
-// chip style of modesLine — each a dim "key label" pair, joined by middle dots
-// and truncated to width. The hint set switches with the mode: action keys in
-// list mode, the prompt keys while a prompt is open.
+// chip style of modesLine — each a dim "key label" pair, joined by middle dots.
+// The hint set switches with the mode: action keys in list mode, the prompt keys
+// while a prompt is open. When the line is too wide it sheds whole hints from the
+// tail (keeping the pinned "?" help) rather than cutting one mid-word.
 func (m model) footerLine() string {
 	bindings := footerListBindings
 	switch m.mode {
@@ -810,16 +975,48 @@ func (m model) footerLine() string {
 		bindings = footerFilterBindings
 	case modeCheckoutPrompt, modeBranchPrompt:
 		bindings = footerArgBindings
+	case modeActionMenu:
+		bindings = footerActionBindings
 	}
+	if m.width <= 0 {
+		return renderFooterBindings(bindings)
+	}
+	working := append([]keyBinding(nil), bindings...)
+	line := renderFooterBindings(working)
+	for lipgloss.Width(line) > m.width && len(working) > 1 {
+		idx := lastDroppableBinding(working)
+		if idx < 0 {
+			break
+		}
+		working = append(working[:idx], working[idx+1:]...)
+		line = renderFooterBindings(working)
+	}
+	// Last resort: even the single pinned hint overflows.
+	if lipgloss.Width(line) > m.width {
+		line = ansi.Truncate(line, m.width, "…")
+	}
+	return line
+}
+
+// renderFooterBindings joins keybinding hints into the dim middle-dot footer line.
+func renderFooterBindings(bindings []keyBinding) string {
 	parts := make([]string, len(bindings))
 	for i, kb := range bindings {
 		parts[i] = colorDim.Render(kb.keys + " " + kb.desc)
 	}
-	line := strings.Join(parts, " · ")
-	if m.width > 0 {
-		line = ansi.Truncate(line, m.width, "…")
+	return strings.Join(parts, " · ")
+}
+
+// lastDroppableBinding is the index of the last hint that may be shed — every
+// hint except the pinned "?" help, which gates the full binding overlay and so
+// is the last to go. Returns -1 when only the pinned hint remains.
+func lastDroppableBinding(bindings []keyBinding) int {
+	for i := len(bindings) - 1; i >= 0; i-- {
+		if bindings[i].keys != "?" {
+			return i
+		}
 	}
-	return line
+	return -1
 }
 
 // rightBlock is the static right-corner chrome: "gbx <version>" over
@@ -864,6 +1061,17 @@ func (m model) headerBottom() string {
 // by a label — the active chip's label bold + accent, the others dim —
 // separated by middle dots.
 func (m model) modesLine() string {
+	line := strings.Join(m.modesLineParts(), " · ")
+	if m.width > 0 {
+		line = ansi.Truncate(line, m.width, "…")
+	}
+	return line
+}
+
+// modesLineParts renders the three filter-field chips (active one bold + accent,
+// the rest dim), the shared source for the truncated modesLine and its natural
+// width.
+func (m model) modesLineParts() []string {
 	active := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
 	chips := []struct {
 		field filterField
@@ -882,11 +1090,14 @@ func (m model) modesLine() string {
 		}
 		parts[i] = colorDim.Render(c.key+" ") + labelStyle.Render(c.label)
 	}
-	line := strings.Join(parts, " · ")
-	if m.width > 0 {
-		line = ansi.Truncate(line, m.width, "…")
-	}
-	return line
+	return parts
+}
+
+// modesNaturalWidth is the untruncated width of the filter-field chips — the
+// header's intrinsic left-content width, used to decide whether the version/PID
+// corner still fits beside it.
+func (m model) modesNaturalWidth() int {
+	return lipgloss.Width(strings.Join(m.modesLineParts(), " · "))
 }
 
 // suggestionLine renders the c/b-prompt's autocomplete options, the highlighted
@@ -937,27 +1148,23 @@ func (m model) listContent() string {
 
 	// Column widths are pinned to the full repo list, not just the matched
 	// subset, so they stay put as the filter narrows the visible rows.
-	nameWidth, branchWidth, trackingWidth, stateWidth, diffWidth := 0, 0, 0, 0, 0
-	for _, r := range m.repos {
-		if w := lipgloss.Width(r.name); w > nameWidth {
-			nameWidth = w
-		}
-		if w := lipgloss.Width(branchText(r)); w > branchWidth {
-			branchWidth = w
-		}
-		if w := lipgloss.Width(trackingText(r)); w > trackingWidth {
-			trackingWidth = w
-		}
-		if w := lipgloss.Width(stateText(r)); w > stateWidth {
-			stateWidth = w
-		}
-		if w := lipgloss.Width(diffText(r)); w > diffWidth {
-			diffWidth = w
+	nameWidth, branchWidth, trackingWidth, stateWidth, diffWidth := m.colWidths()
+
+	// name and branch are the only elastic columns: when the natural row is wider
+	// than the terminal they shrink (proportionally) to fit the budget left after
+	// the fixed columns, truncating their text. The fixed columns
+	// (gutter/tracking/state/diff) always render at full width.
+	nameRender, branchRender := nameWidth, branchWidth
+	if m.width > 0 {
+		budget := m.width - fixedColsWidth(trackingWidth, stateWidth, diffWidth)
+		if budget < nameWidth+branchWidth {
+			nameRender, branchRender = splitNameBranch(budget, nameWidth, branchWidth)
 		}
 	}
+
 	gutterCol := lipgloss.NewStyle().Width(2) // spinner / ✗ slot, 1 glyph + 1 pad
-	nameCol := lipgloss.NewStyle().Width(nameWidth)
-	branchCol := lipgloss.NewStyle().Width(branchWidth)
+	nameCol := lipgloss.NewStyle().Width(nameRender)
+	branchCol := lipgloss.NewStyle().Width(branchRender)
 	trackingCol := lipgloss.NewStyle().Width(trackingWidth)
 	stateCol := lipgloss.NewStyle().Width(stateWidth)
 	diffCol := lipgloss.NewStyle().Width(diffWidth)
@@ -969,14 +1176,22 @@ func (m model) listContent() string {
 	hlName := m.field != fieldBranch
 	hlBranch := m.field != fieldName
 
+	cur := m.cursorIndex()
 	rows := make([]string, len(matched))
 	for i, r := range matched {
+		// A column narrowed below its content is truncated plain (the ellipsis
+		// would collide with the match underline); only an untruncated cell is
+		// highlighted.
 		name := r.name
-		if hlName {
+		if lipgloss.Width(name) > nameRender {
+			name = truncate(name, nameRender)
+		} else if hlName {
 			name = renderHighlight(r.name, matchPositions(terms, r.name), lipgloss.NewStyle())
 		}
 		branch := branchText(r)
-		if hlBranch && r.status != nil {
+		if lipgloss.Width(branch) > branchRender {
+			branch = truncate(branch, branchRender)
+		} else if hlBranch && r.status != nil {
 			branch = renderHighlight(r.status.branch, matchPositions(terms, r.status.branch), branchStyle(r.status.branch))
 		}
 		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(name), "  ", trackingCol.Render(trackingText(r)), "  ", branchCol.Render(branch), "  ", stateCol.Render(stateText(r)), "  ", diffCol.Render(diffText(r))}
@@ -985,11 +1200,110 @@ func (m model) listContent() string {
 			if m.width > 0 {
 				s = truncate(s, m.width-lipgloss.Width(prefix)-2)
 			}
-			cols = append(cols, "  ", s)
+			if s != "" {
+				cols = append(cols, "  ", s)
+			}
 		}
 		rows[i] = lipgloss.JoinHorizontal(lipgloss.Top, cols...)
+		if i == cur {
+			rows[i] = bandRow(rows[i], m.width)
+		}
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+// colWidths returns the natural (widest-value) width of each data column across
+// the full repo list — pinned to all repos, not the matched subset, so columns
+// don't shift as the filter narrows the visible rows.
+func (m model) colWidths() (name, branch, tracking, state, diff int) {
+	for _, r := range m.repos {
+		name = max(name, lipgloss.Width(r.name))
+		branch = max(branch, lipgloss.Width(branchText(r)))
+		tracking = max(tracking, lipgloss.Width(trackingText(r)))
+		state = max(state, lipgloss.Width(stateText(r)))
+		diff = max(diff, lipgloss.Width(diffText(r)))
+	}
+	return
+}
+
+// fixedColsWidth is the row width consumed by everything except the two elastic
+// columns (name, branch): the 2-wide gutter, the tracking/state/diff columns,
+// and the four 2-space gaps separating the five data columns. Subtracted from
+// the terminal width to get the name+branch budget.
+func fixedColsWidth(trackingWidth, stateWidth, diffWidth int) int {
+	return 2 + trackingWidth + stateWidth + diffWidth + 8
+}
+
+// splitNameBranch divides budget between the name and branch columns in
+// proportion to their natural widths, clamping each to its natural width and
+// handing the slack to the other. Called only when budget < nameW+branchW (they
+// don't both fit at full width); the too-narrow guard (minRowWidth) ensures
+// budget still affords each its floor before we get here.
+func splitNameBranch(budget, nameW, branchW int) (int, int) {
+	total := nameW + branchW
+	if total == 0 {
+		return 0, 0
+	}
+	n := budget * nameW / total
+	b := budget - n
+	if n > nameW {
+		b += n - nameW
+		n = nameW
+	}
+	if b > branchW {
+		n += b - branchW
+		b = branchW
+	}
+	return n, b
+}
+
+// colFloor is the minimum width an elastic column (name/branch) is truncated to
+// before the row is declared unrenderable: 3 visible runes plus the ellipsis.
+const colFloor = 4
+
+// minRowWidth is the narrowest terminal width that can still render a row: the
+// fixed columns plus each elastic column's floor (capped at its natural width,
+// since a column never needs more than it has). Below this, View yields to the
+// too-narrow screen.
+func (m model) minRowWidth() int {
+	nameW, branchW, trackingW, stateW, diffW := m.colWidths()
+	return fixedColsWidth(trackingW, stateW, diffW) + min(colFloor, nameW) + min(colFloor, branchW)
+}
+
+// tooNarrow reports whether the terminal is too narrow to render even a minimal
+// repo row. Only meaningful once repos exist (the empty-state lines fit any
+// width); width 0 is the pre-resize state and never too narrow.
+func (m model) tooNarrow() bool {
+	return m.width > 0 && len(m.repos) > 0 && m.width < m.minRowWidth()
+}
+
+// tooNarrowScreen is the whole-screen fallback shown while tooNarrow: a
+// centered, dim message naming the current and required width so the user knows
+// how far to widen.
+func (m model) tooNarrowScreen() string {
+	msg := colorDim.Render(fmt.Sprintf("terminal too narrow — width %d, need %d", m.width, m.minRowWidth()))
+	if m.height <= 0 {
+		return msg
+	}
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, msg)
+}
+
+// cursorBandSeq opens the cursored row's background — ANSI color 8 (theme-dim)
+// in 256-color form so it threads through plain string concatenation.
+const cursorBandSeq = "\x1b[48;5;8m"
+
+// bandRow tints the cursored row with a full-width background band. The row is a
+// join of independently-styled cells, each ending in a color reset that also
+// clears the background; lipgloss won't re-thread a wrapping Background across
+// those resets, so the band would show through in gaps. Instead we re-open the
+// band after every reset and pad to full width inside it, giving one continuous
+// band under the cells' own foreground colors.
+func bandRow(line string, width int) string {
+	line = strings.ReplaceAll(line, ansi.ResetStyle, ansi.ResetStyle+cursorBandSeq)
+	if w := ansi.StringWidth(line); width > w {
+		line += strings.Repeat(" ", width-w)
+	}
+	return cursorBandSeq + line + ansi.ResetStyle
 }
 
 // branchText is the branch column for a row, or "..." until status loads.

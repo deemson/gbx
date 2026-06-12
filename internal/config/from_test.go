@@ -61,25 +61,57 @@ func (s *FromBytesSuite) TestValidation() {
 				"unknown: unknown field",
 			},
 		},
-		"unknown field in actions": {
+		"unknown field in action": {
 			cfg: []string{
-				"[actions]",
+				"[[actions]]",
+				`label = "x"`,
+				`command = ["x"]`,
 				"unknown = 42",
 			},
 			err: []string{
-				"actions.enter: required field is missing",
-				"actions.shift-enter: required field is missing",
-				"actions.unknown: unknown field",
+				"actions.0.unknown: unknown field",
+			},
+		},
+		"missing action fields": {
+			cfg: []string{
+				"[[actions]]",
+				`label = "x"`,
+			},
+			err: []string{
+				"actions.0.command: required field is missing",
 			},
 		},
 		"wrong type": {
 			cfg: []string{
-				"[actions]",
-				`enter = "lazygit"`,
-				`shift-enter = ["bash"]`,
+				`actions = "lazygit"`,
 			},
 			err: []string{
-				"actions.enter: expected array, got string",
+				"actions: expected array, got string",
+			},
+		},
+		"too many actions": {
+			cfg: []string{
+				`[[actions]]`, `label="1"`, `command=["a"]`,
+				`[[actions]]`, `label="2"`, `command=["a"]`,
+				`[[actions]]`, `label="3"`, `command=["a"]`,
+				`[[actions]]`, `label="4"`, `command=["a"]`,
+				`[[actions]]`, `label="5"`, `command=["a"]`,
+				`[[actions]]`, `label="6"`, `command=["a"]`,
+				`[[actions]]`, `label="7"`, `command=["a"]`,
+				`[[actions]]`, `label="8"`, `command=["a"]`,
+				`[[actions]]`, `label="9"`, `command=["a"]`,
+				`[[actions]]`, `label="10"`, `command=["a"]`,
+			},
+			err: []string{
+				"actions: must have at most 9 items",
+			},
+		},
+		"empty actions": {
+			cfg: []string{
+				`actions = []`,
+			},
+			err: []string{
+				"actions: must have at least 1 items",
 			},
 		},
 	}

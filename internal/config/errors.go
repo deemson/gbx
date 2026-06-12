@@ -67,6 +67,7 @@ func (e *ValidationError) Error() string {
 var (
 	quotedNames = regexp.MustCompile(`'([^']+)'`)
 	valueType   = regexp.MustCompile(`Value is (\S+) but should be (\S+)`)
+	itemsBound  = regexp.MustCompile(`at (least|most) (\d+) items`)
 )
 
 // newValidationError translates the JSON-schema evaluation's flat
@@ -93,6 +94,10 @@ func newValidationError(detailed map[string]string) *ValidationError {
 				continue // null type is redundant with the "required" issue
 			}
 			issues = append(issues, Issue{toDotted(path), fmt.Sprintf("expected %s, got %s", m[2], m[1])})
+		case "minItems", "maxItems":
+			if m := itemsBound.FindStringSubmatch(msg); m != nil {
+				issues = append(issues, Issue{toDotted(path), fmt.Sprintf("must have at %s %s items", m[1], m[2])})
+			}
 		}
 	}
 	sort.Slice(issues, func(i, j int) bool { return issues[i].String() < issues[j].String() })

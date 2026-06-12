@@ -30,7 +30,7 @@ func WithLogPath(path string) Option {
 }
 
 // WithConfig sets the loaded application config (the action command set). The
-// model stores it; it is not yet consumed by any key handler.
+// enter-key menu lists its actions and runs the chosen one in the cursored repo.
 func WithConfig(cfg appconfig.Config) Option {
 	return func(c *config) { c.appConfig = cfg }
 }

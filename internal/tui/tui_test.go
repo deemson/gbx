@@ -16,6 +16,8 @@ var (
 	keyShiftTab = tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
 	keyEnter    = tea.KeyPressMsg{Code: tea.KeyEnter}
 	keyEsc      = tea.KeyPressMsg{Code: tea.KeyEscape}
+	keyUp       = tea.KeyPressMsg{Code: tea.KeyUp}
+	keyDown     = tea.KeyPressMsg{Code: tea.KeyDown}
 	keyQuestion = tea.KeyPressMsg{Code: '?', Text: "?"}
 	keyCtrlF    = tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl}
 	ctrl1       = tea.KeyPressMsg{Code: '1', Mod: tea.ModCtrl}
@@ -171,7 +173,7 @@ func TestHelpOverlayShowsBindings(t *testing.T) {
 	tp.waitForContent("proj")
 
 	tp.sendKey(keyQuestion)
-	tp.waitForContent("list mode", "ctrl+f", "filter prompt", "filter syntax")
+	tp.waitForContent("list mode", "actions menu", "ctrl+f", "filter prompt")
 }
 
 func TestRefreshPicksUpExternalChange(t *testing.T) {

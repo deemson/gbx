@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"errors"
+	"os/exec"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/rs/zerolog/log"
@@ -52,4 +54,22 @@ func runCmd(name, label string, run func(context.Context) error) tea.Cmd {
 		ev.Str("name", name).Str("command", label).Msg("command finished")
 		return cmdDoneMsg{name: name, err: err}
 	}
+}
+
+// runAction suspends the TUI to run a menu action (argv, already interpolated)
+// in the cursored repo's directory, handing it the terminal — so an interactive
+// tool like lazygit takes over until it exits. The child's exit code is ignored
+// (interactive tools exit non-zero for benign reasons); only a launch failure
+// — binary missing / not executable — comes back as a row error. Either way the
+// repo is refreshed via cmdDoneMsg, since the action may have changed its state.
+func runAction(name string, argv []string, dir string) tea.Cmd {
+	c := exec.Command(argv[0], argv[1:]...) //nolint:gosec
+	c.Dir = dir
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		var exitErr *exec.ExitError
+		if err != nil && !errors.As(err, &exitErr) {
+			return cmdDoneMsg{name: name, err: err}
+		}
+		return cmdDoneMsg{name: name}
+	})
 }
