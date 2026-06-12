@@ -338,6 +338,37 @@ func TestHelpShowsPIDAndLogPath(t *testing.T) {
 	require.Contains(t, out, "/state/gbx/gbx-4242.log")
 }
 
+// Row 1 carries a dim "<C-f> " hint in front of the filter status (list mode),
+// and the always-visible footer shows list-mode action keys.
+func TestHeaderHintAndListFooter(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+	m = drive(t, m, tea.WindowSizeMsg{Width: 100, Height: 40})
+
+	out := ansi.Strip(m.View().Content)
+	require.Contains(t, out, "<C-f> Filter:")
+	require.Contains(t, out, "r refresh")
+	require.Contains(t, out, "c checkout")
+	require.Contains(t, out, "q quit")
+}
+
+// Opening the filter prompt keeps the "<C-f> " hint and switches the footer to
+// the prompt keys; the checkout prompt drops the hint (row 1 isn't the filter).
+func TestFooterFollowsPromptMode(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+	m = drive(t, m, tea.WindowSizeMsg{Width: 100, Height: 40}, keyCtrlF)
+
+	out := ansi.Strip(m.View().Content)
+	require.Contains(t, out, "<C-f> Filter:")
+	require.Contains(t, out, "enter apply")
+	require.NotContains(t, out, "r refresh")
+
+	m = drive(t, newModel("x").addRepo("a", git.Repo{}),
+		tea.WindowSizeMsg{Width: 100, Height: 40}, tea.KeyPressMsg{Code: 'c', Text: "c"})
+	out = ansi.Strip(m.View().Content)
+	require.Contains(t, out, "Checkout:")
+	require.NotContains(t, out, "<C-f> Checkout:")
+}
+
 func TestCOpensCheckoutPromptWithSuggestions(t *testing.T) {
 	m := newModel("x").addRepo("a", git.Repo{})
 	m = m.setBranches("a", []string{"main", "feat"})

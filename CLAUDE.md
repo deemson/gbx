@@ -7,7 +7,7 @@ of git commands across them.
 
 - **A fixed command set, not free-form.** List mode is the default — letter keys
   dispatch typed `Repo` methods directly on the filtered repos: `r` refresh,
-  `f` fetch, `p` pull, `c` Switch Branch (arg prompt with branch autocomplete
+  `f` fetch, `p` pull, `c` Checkout (arg prompt with branch autocomplete
   drawn from the union across the visible repos; `tab`/`shift+tab` cycle), `b`
   New Branch (arg prompt; same suggestion source as `c` for reference, Tab
   cycles — picking an existing name fails on Enter and the typed error surfaces
@@ -59,23 +59,28 @@ of git commands across them.
 - **The TUI is htop-style:** list mode is the default — letter keys dispatch
   git actions directly on the filtered repos and `ctrl+1/2/3` toggle the filter
   field (name+branch / name / branch). The app has a **three-row header at the
-  top** that's always visible: row 1 is `Filter: <value>` (dim `none` when
-  empty), row 2 is the field chips `<C-1> name + branch · <C-2> name · <C-3>
+  top** that's always visible: row 1 is `<C-f> Filter: <value>` (dim `none` when
+  empty), with a dim `<C-f> ` key hint prefixing the filter the same way the
+  field chips prefix their labels (shown in list + filter-prompt modes, not the
+  `c`/`b` prompts), row 2 is the field chips `<C-1> name + branch · <C-2> name · <C-3>
   branch` — each chip a dim `<C-N>` key prefix plus a label, the active chip's
   label bold + accent — and row 3 is a full-width dim `─` rule. The right corner
   is static dim chrome on rows 1–2: `gbx <version>` over `PID: <pid>`, shown in
   every mode (`version` defaults to `dev`; release builds set it via
   `WithVersion`/ldflags). `ctrl+f` opens the filter
   prompt — row 1 becomes the live-editable draft and live-narrows the visible
-  rows (Enter commits to `m.filter`). `c` opens the Switch Branch prompt
-  (`Switch Branch:` on row 1, branch suggestions on row 2, dim `(no matches)`
+  rows (Enter commits to `m.filter`). `c` opens the Checkout prompt
+  (`Checkout:` on row 1, branch suggestions on row 2, dim `(no matches)`
   when the draft narrows them to empty); `b` opens the New Branch prompt
   (`New Branch:` on row 1, same suggestion source as reference). `c`/`b` lack
   the retrigger-close — their letters are typeable in refs/branch names.
   `ctrl+1/2/3` are unbound in `c`/`b` prompts (field stays sticky). `?`
-  toggles the help overlay (alt screen). There is no bottom bar. The binding
-  slices in `internal/tui/help.go` are the single source of truth for what `?`
-  documents.
+  toggles the help overlay (alt screen). An always-visible **footer** sits below
+  the list — a full-width dim `─` rule (mirroring the header rule) over a curated
+  one-line keybinding hint that follows the mode (action keys in list mode, the
+  prompt keys while a prompt is open); the help overlay's footer gains the same
+  rule. The binding slices in `internal/tui/help.go` are the single source of
+  truth for both what `?` documents and the curated footer hints.
 - **Test the TUI end-to-end** with the `testProgram` harness (`internal/tui`,
   `testhelper_test.go`): it drives a real `tea.Program`, inject keys with
   `send`/`sendKey`, assert rendered output with `waitForContent`. Build fixtures

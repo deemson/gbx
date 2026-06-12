@@ -113,6 +113,13 @@ type model struct {
 func newModel(dir string) model {
 	p := textinput.New()
 	p.Prompt = filterLabel
+	// The default focused/blurred prompt style colors the label (ANSI 7), which
+	// reads dimmer than the default foreground we render the same label with in
+	// list mode. Drop the color so "Filter: " looks identical open or closed.
+	st := p.Styles()
+	st.Focused.Prompt = st.Focused.Prompt.UnsetForeground()
+	st.Blurred.Prompt = st.Blurred.Prompt.UnsetForeground()
+	p.SetStyles(st)
 	// A non-zero width is required up front: textinput truncates the placeholder
 	// to Width()+1 runes. Resized on the first WindowSizeMsg.
 	p.SetWidth(40)
@@ -135,10 +142,16 @@ func newModel(dir string) model {
 // Prompt labels in the header's top row. The label visually anchors what the
 // row currently is — filter status, branch picker, or new-branch namer.
 const (
-	filterLabel       = "Filter: "
-	switchBranchLabel = "Switch Branch: "
-	newBranchLabel    = "New Branch: "
+	filterLabel    = "Filter: "
+	checkoutLabel  = "Checkout: "
+	newBranchLabel = "New Branch: "
 )
+
+// filterKeyHint is the dim "<C-f> " prefix shown left of the filter status on
+// row 1 (list and filter-prompt modes), mirroring the C-1/2/3 field chips: it
+// labels the key bound to the filter. Not shown in the c/b prompts, where row 1
+// isn't the filter.
+const filterKeyHint = "<C-f> "
 
 func (m model) Init() tea.Cmd {
 	return readEntriesCmd(m.dir)
@@ -149,7 +162,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.prompt.SetWidth(msg.Width - lipgloss.Width(m.prompt.Prompt))
+		m.prompt.SetWidth(msg.Width - lipgloss.Width(m.prompt.Prompt) - m.promptPrefixWidth())
 		m.help.SetWidth(msg.Width)
 		m.help.SetHeight(msg.Height - lipgloss.Height(m.helpHeader()) - lipgloss.Height(m.helpFooter()))
 		return m, nil
@@ -315,7 +328,7 @@ func (m model) updateFilterPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
 // populated from the visible repos.
 func (m model) openCheckoutPrompt() (model, tea.Cmd) {
 	m.mode = modeCheckoutPrompt
-	m = m.applyPromptLabel(switchBranchLabel)
+	m = m.applyPromptLabel(checkoutLabel)
 	m.prompt.SetValue("")
 	m = m.recomputeSuggestions()
 	return m, m.prompt.Focus()
@@ -419,9 +432,19 @@ func (m model) closePrompt() model {
 func (m model) applyPromptLabel(label string) model {
 	m.prompt.Prompt = label
 	if m.width > 0 {
-		m.prompt.SetWidth(m.width - lipgloss.Width(m.prompt.Prompt))
+		m.prompt.SetWidth(m.width - lipgloss.Width(m.prompt.Prompt) - m.promptPrefixWidth())
 	}
 	return m
+}
+
+// promptPrefixWidth is the width of chrome rendered left of the prompt's own
+// label on row 1 — the dim "<C-f> " filter hint, shown only while the filter
+// prompt is open. Keeps the input field sized to the space the prefix leaves.
+func (m model) promptPrefixWidth() int {
+	if m.mode == modeFilterPrompt {
+		return lipgloss.Width(filterKeyHint)
+	}
+	return 0
 }
 
 // updateHelp handles keys with the help overlay open. ? or ESC closes it; every
@@ -708,16 +731,17 @@ func (m model) View() tea.View {
 	}
 	header := m.framedHeader(lipgloss.JoinVertical(lipgloss.Left, m.headerTop(), m.headerBottom()))
 	list := m.listContent()
+	footer := m.footer()
 
 	if m.height > 0 {
-		listHeight := m.height - 3
+		listHeight := m.height - 3 - lipgloss.Height(footer)
 		if listHeight < 1 {
 			listHeight = 1
 		}
 		listArea := lipgloss.NewStyle().Height(listHeight).Render(list)
-		return tea.View{Content: lipgloss.JoinVertical(lipgloss.Left, header, listArea), AltScreen: true}
+		return tea.View{Content: lipgloss.JoinVertical(lipgloss.Left, header, listArea, footer), AltScreen: true}
 	}
-	return tea.View{Content: lipgloss.JoinVertical(lipgloss.Left, header, list), AltScreen: true}
+	return tea.View{Content: lipgloss.JoinVertical(lipgloss.Left, header, list, footer), AltScreen: true}
 }
 
 // framedHeader composes the top chrome shared by the list view and the help
@@ -749,20 +773,53 @@ func (m model) helpHeader() string {
 	return m.framedHeader(left)
 }
 
-// helpFooter is the help overlay's fixed bottom line: a dim back hint on the
-// left and the scroll percentage on the right, the percentage omitted when the
-// bindings fit without scrolling.
+// helpFooter is the help overlay's fixed bottom block: a full-width dim rule
+// (mirroring the header's) above a dim back hint on the left and the scroll
+// percentage on the right, the percentage omitted when the bindings fit without
+// scrolling.
 func (m model) helpFooter() string {
+	rule := colorDim.Render(strings.Repeat("─", m.width))
 	hint := colorDim.Render("? / esc: back")
-	if m.help.TotalLineCount() <= m.help.VisibleLineCount() {
-		return hint
+	line := hint
+	if m.help.TotalLineCount() > m.help.VisibleLineCount() {
+		pct := colorDim.Render(fmt.Sprintf("%3.f%%", m.help.ScrollPercent()*100))
+		gap := m.width - lipgloss.Width(hint) - lipgloss.Width(pct)
+		if gap < 1 {
+			gap = 1
+		}
+		line = hint + strings.Repeat(" ", gap) + pct
 	}
-	pct := colorDim.Render(fmt.Sprintf("%3.f%%", m.help.ScrollPercent()*100))
-	gap := m.width - lipgloss.Width(hint) - lipgloss.Width(pct)
-	if gap < 1 {
-		gap = 1
+	return lipgloss.JoinVertical(lipgloss.Left, rule, line)
+}
+
+// footer is the list view's always-visible bottom block: a full-width dim rule
+// mirroring the header's, above the per-mode keybinding hint line.
+func (m model) footer() string {
+	rule := colorDim.Render(strings.Repeat("─", m.width))
+	return lipgloss.JoinVertical(lipgloss.Left, rule, m.footerLine())
+}
+
+// footerLine renders the always-on keybinding hints for the current mode in the
+// chip style of modesLine — each a dim "key label" pair, joined by middle dots
+// and truncated to width. The hint set switches with the mode: action keys in
+// list mode, the prompt keys while a prompt is open.
+func (m model) footerLine() string {
+	bindings := footerListBindings
+	switch m.mode {
+	case modeFilterPrompt:
+		bindings = footerFilterBindings
+	case modeCheckoutPrompt, modeBranchPrompt:
+		bindings = footerArgBindings
 	}
-	return hint + strings.Repeat(" ", gap) + pct
+	parts := make([]string, len(bindings))
+	for i, kb := range bindings {
+		parts[i] = colorDim.Render(kb.keys + " " + kb.desc)
+	}
+	line := strings.Join(parts, " · ")
+	if m.width > 0 {
+		line = ansi.Truncate(line, m.width, "…")
+	}
+	return line
 }
 
 // rightBlock is the static right-corner chrome: "gbx <version>" over
@@ -775,16 +832,21 @@ func (m model) rightBlock() string {
 
 // headerTop is row 1: the active prompt's input while a prompt is open, or the
 // committed filter status (label + value, with dim "none" when empty) when in
-// list mode.
+// list mode. A dim "<C-f> " hint prefixes the row whenever it shows the filter —
+// list mode and the filter prompt — but not the c/b prompts (row 1 isn't the
+// filter there).
 func (m model) headerTop() string {
+	hint := colorDim.Render(filterKeyHint)
 	switch m.mode {
-	case modeFilterPrompt, modeCheckoutPrompt, modeBranchPrompt:
+	case modeFilterPrompt:
+		return hint + m.prompt.View()
+	case modeCheckoutPrompt, modeBranchPrompt:
 		return m.prompt.View()
 	}
 	if m.filter == "" {
-		return filterLabel + colorDim.Render("none")
+		return hint + filterLabel + colorDim.Render("none")
 	}
-	return filterLabel + m.filter
+	return hint + filterLabel + m.filter
 }
 
 // headerBottom is row 2: the filter-field mode chips when in list or filter

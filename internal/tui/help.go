@@ -25,7 +25,7 @@ var listBindings = []keyBinding{
 	{"r", "refresh filtered repos"},
 	{"f", "fetch on filtered repos"},
 	{"p", "pull (fast-forward) on filtered repos"},
-	{"c", "Switch Branch prompt (checkout <ref>)"},
+	{"c", "Checkout prompt (checkout <ref>)"},
 	{"b", "New Branch prompt (checkout -b <name>)"},
 	{"ctrl+1", "filter field: name + branch (default)"},
 	{"ctrl+2", "filter field: name"},
@@ -56,6 +56,33 @@ var filterSyntax = []keyBinding{
 	{"!foo", "exclude foo"},
 }
 
+// footerListBindings / footerFilterBindings / footerArgBindings are the curated
+// one-line keybinding hints shown in the always-visible bottom footer, switched
+// by mode. They carry shorter labels than the ? overlay above (a footer is one
+// line, truncated to width), so they're a separate, deliberately terse surface.
+var footerListBindings = []keyBinding{
+	{"r", "refresh"},
+	{"f", "fetch"},
+	{"p", "pull"},
+	{"c", "checkout"},
+	{"b", "new branch"},
+	{"ctrl+f", "filter"},
+	{"?", "help"},
+	{"q", "quit"},
+}
+
+var footerFilterBindings = []keyBinding{
+	{"enter", "apply"},
+	{"esc", "clear/close"},
+	{"ctrl+f", "cancel"},
+}
+
+var footerArgBindings = []keyBinding{
+	{"enter", "apply"},
+	{"esc", "clear/close"},
+	{"tab/shift+tab", "cycle"},
+}
+
 // helpHeading styles a section header — cyan bold, the app's accent (the active
 // filter chip). helpKey styles the key column yellow so keys pop against the
 // default-foreground descriptions.
@@ -82,7 +109,7 @@ func helpContent() string {
 	}
 	section("list mode", listBindings)
 	b.WriteString("\n")
-	section("prompts (ctrl+f filter · c Switch Branch · b New Branch)", promptBindings)
+	section("prompts (ctrl+f filter · c Checkout · b New Branch)", promptBindings)
 	b.WriteString("\n")
 	section("filter syntax (space = AND)", filterSyntax)
 	return b.String()
