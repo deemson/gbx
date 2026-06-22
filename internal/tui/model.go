@@ -918,15 +918,15 @@ func (m model) framedHeader(left string) string {
 }
 
 // showCorner reports whether the version/PID corner block still fits beside the
-// header's intrinsic left content (the filter-field chips at their natural
-// width). Below that the corner is dropped so the left block — including the
-// elastic prompt input — gets the whole row. Keyed off the chips' fixed width,
-// not the elastic input, so it stays stable as the prompt fills.
+// chips at their terse width with the gap between them. Below that the corner is
+// dropped so the left block — including the elastic prompt input — gets the
+// whole row. Keyed off the chips' fixed width, not the elastic input, so it
+// stays stable as the prompt fills.
 func (m model) showCorner() bool {
 	if m.width <= 0 {
 		return true
 	}
-	return m.width >= m.modesNaturalWidth()+lipgloss.Width(m.rightBlock())
+	return m.width >= m.chipsWidth(true)+lipgloss.Width(m.rightBlock())+cornerGap
 }
 
 // helpHeader is the help overlay's fixed top chrome: the dim "Log" label over
@@ -1008,11 +1008,11 @@ func renderFooterBindings(bindings []keyBinding) string {
 }
 
 // lastDroppableBinding is the index of the last hint that may be shed — every
-// hint except the pinned "?" help, which gates the full binding overlay and so
+// hint except the pinned "<?>" help, which gates the full binding overlay and so
 // is the last to go. Returns -1 when only the pinned hint remains.
 func lastDroppableBinding(bindings []keyBinding) int {
 	for i := len(bindings) - 1; i >= 0; i-- {
-		if bindings[i].keys != "?" {
+		if bindings[i].keys != "<?>" {
 			return i
 		}
 	}
@@ -1061,7 +1061,7 @@ func (m model) headerBottom() string {
 // by a label — the active chip's label bold + accent, the others dim —
 // separated by middle dots.
 func (m model) modesLine() string {
-	line := strings.Join(m.modesLineParts(), " · ")
+	line := strings.Join(m.modesLineParts(m.useShortChips()), " · ")
 	if m.width > 0 {
 		line = ansi.Truncate(line, m.width, "…")
 	}
@@ -1069,18 +1069,20 @@ func (m model) modesLine() string {
 }
 
 // modesLineParts renders the three filter-field chips (active one bold + accent,
-// the rest dim), the shared source for the truncated modesLine and its natural
-// width.
-func (m model) modesLineParts() []string {
+// the rest dim). short swaps the full labels (name + branch / name / branch) for
+// terse ones (n+b / n / b) — the first thing the header sheds as it narrows,
+// before it drops the version/PID corner.
+func (m model) modesLineParts(short bool) []string {
 	active := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
 	chips := []struct {
 		field filterField
 		key   string
 		label string
+		terse string
 	}{
-		{fieldNameBranch, "<C-1>", "name + branch"},
-		{fieldName, "<C-2>", "name"},
-		{fieldBranch, "<C-3>", "branch"},
+		{fieldNameBranch, "<C-1>", "name + branch", "n+b"},
+		{fieldName, "<C-2>", "name", "n"},
+		{fieldBranch, "<C-3>", "branch", "b"},
 	}
 	parts := make([]string, len(chips))
 	for i, c := range chips {
@@ -1088,16 +1090,32 @@ func (m model) modesLineParts() []string {
 		if c.field == m.field {
 			labelStyle = active
 		}
-		parts[i] = colorDim.Render(c.key+" ") + labelStyle.Render(c.label)
+		label := c.label
+		if short {
+			label = c.terse
+		}
+		parts[i] = colorDim.Render(c.key+" ") + labelStyle.Render(label)
 	}
 	return parts
 }
 
-// modesNaturalWidth is the untruncated width of the filter-field chips — the
-// header's intrinsic left-content width, used to decide whether the version/PID
-// corner still fits beside it.
-func (m model) modesNaturalWidth() int {
-	return lipgloss.Width(strings.Join(m.modesLineParts(), " · "))
+// chipsWidth is the untruncated width of the filter-field chips at the full or
+// terse label set — the header's intrinsic left-content width.
+func (m model) chipsWidth(short bool) int {
+	return lipgloss.Width(strings.Join(m.modesLineParts(short), " · "))
+}
+
+// cornerGap is the minimum blank space kept between the filter-field chips and
+// the version/PID corner: once fewer than this many columns separate them, the
+// header degrades (chips shorten, then the corner drops) rather than letting
+// them crowd together.
+const cornerGap = 5
+
+// useShortChips reports whether the chips drop to their terse labels: when the
+// full labels wouldn't fit beside the corner with the gap. The header shortens
+// the chips one rung before it drops the corner entirely (showCorner).
+func (m model) useShortChips() bool {
+	return m.width > 0 && m.width < m.chipsWidth(false)+lipgloss.Width(m.rightBlock())+cornerGap
 }
 
 // suggestionLine renders the c/b-prompt's autocomplete options, the highlighted
@@ -1281,11 +1299,17 @@ func (m model) tooNarrow() bool {
 // centered, dim message naming the current and required width so the user knows
 // how far to widen.
 func (m model) tooNarrowScreen() string {
-	msg := colorDim.Render(fmt.Sprintf("terminal too narrow — width %d, need %d", m.width, m.minRowWidth()))
-	if m.height <= 0 {
-		return msg
+	msg := fmt.Sprintf("terminal too narrow — width %d, need %d", m.width, m.minRowWidth())
+	if m.width <= 0 {
+		return colorDim.Render(msg)
 	}
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, msg)
+	// Word-wrap to the terminal width (the message is wider than the widths it
+	// warns about) and center each line; then center the block vertically.
+	wrapped := colorDim.Width(m.width).Align(lipgloss.Center).Render(msg)
+	if m.height <= 0 {
+		return wrapped
+	}
+	return lipgloss.PlaceVertical(m.height, lipgloss.Center, wrapped)
 }
 
 // cursorBandSeq opens the cursored row's background — ANSI color 8 (theme-dim)

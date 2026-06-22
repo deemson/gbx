@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	appconfig "github.com/deemson/gbx/internal/config"
 	"github.com/deemson/gbx/internal/git"
@@ -347,10 +348,11 @@ func TestHeaderHintAndListFooter(t *testing.T) {
 
 	out := ansi.Strip(m.View().Content)
 	require.Contains(t, out, "<C-f> Filter:")
-	require.Contains(t, out, "enter actions")
-	require.Contains(t, out, "r refresh")
-	require.Contains(t, out, "c checkout")
-	require.Contains(t, out, "q quit")
+	require.Contains(t, out, "<C-f> filter") // filter leads the footer now
+	require.Contains(t, out, "<r> refresh")
+	require.Contains(t, out, "<c> checkout")
+	require.Contains(t, out, "<q> quit")
+	require.NotContains(t, out, "actions") // enter hint removed from the footer
 }
 
 // Opening the filter prompt keeps the "<C-f> " hint and switches the footer to
@@ -361,8 +363,8 @@ func TestFooterFollowsPromptMode(t *testing.T) {
 
 	out := ansi.Strip(m.View().Content)
 	require.Contains(t, out, "<C-f> Filter:")
-	require.Contains(t, out, "enter apply")
-	require.NotContains(t, out, "r refresh")
+	require.Contains(t, out, "<enter> apply")
+	require.NotContains(t, out, "<r> refresh")
 
 	m = drive(t, newModel("x").addRepo("a", git.Repo{}),
 		tea.WindowSizeMsg{Width: 100, Height: 40}, tea.KeyPressMsg{Code: 'c', Text: "c"})
@@ -689,7 +691,7 @@ func TestActionDigitFiresAndCloses(t *testing.T) {
 
 	fired, cmd := m.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
 	require.Equal(t, modeList, fired.(model).mode) // closes the instant it fires
-	require.NotNil(t, cmd)                          // ExecProcess scheduled
+	require.NotNil(t, cmd)                         // ExecProcess scheduled
 }
 
 func TestActionOutOfRangeDigitIgnored(t *testing.T) {
@@ -698,7 +700,7 @@ func TestActionOutOfRangeDigitIgnored(t *testing.T) {
 	m.mode = modeActionMenu
 
 	ignored, cmd := m.Update(tea.KeyPressMsg{Code: '2', Text: "2"}) // only one action exists
-	require.Equal(t, modeActionMenu, ignored.(model).mode)         // menu stays open
+	require.Equal(t, modeActionMenu, ignored.(model).mode)          // menu stays open
 	require.Nil(t, cmd)
 }
 
@@ -743,12 +745,34 @@ func TestNarrowWidthTruncatesNameAndBranch(t *testing.T) {
 
 func TestTooNarrowReplacesScreenWithMessage(t *testing.T) {
 	m := newModel("x").addRepo("repo", git.Repo{})
-	m = drive(t, m, tea.WindowSizeMsg{Width: 10, Height: 24})
+	m = drive(t, m, tea.WindowSizeMsg{Width: 18, Height: 24})
 
 	require.True(t, m.tooNarrow())
 	out := ansi.Strip(m.View().Content)
-	require.Contains(t, out, "terminal too narrow")
+	require.Contains(t, out, "narrow")  // message shown (word-wrapped to fit)
 	require.NotContains(t, out, "repo") // the list is gone, not just narrowed
+	for _, line := range strings.Split(out, "\n") {
+		require.LessOrEqual(t, ansi.StringWidth(line), 18) // every line wrapped within the terminal
+	}
+}
+
+func TestChipsShortenBeforeCornerDrops(t *testing.T) {
+	m := newModel("x").addRepo("repo", git.Repo{})
+	m.version = "1.2.3"
+
+	// Narrowest width at which the corner still fits beside the terse chips: in
+	// this band the chips are short but the corner is kept — shortening happens
+	// one rung before the corner drops.
+	m = drive(t, m, tea.WindowSizeMsg{Width: 200, Height: 24})
+	w := m.chipsWidth(true) + lipgloss.Width(m.rightBlock()) + cornerGap
+	m = drive(t, m, tea.WindowSizeMsg{Width: w, Height: 24})
+
+	require.True(t, m.useShortChips())
+	require.True(t, m.showCorner())
+	out := ansi.Strip(m.listView())
+	require.Contains(t, out, "n+b")              // terse label
+	require.Contains(t, out, "gbx 1.2.3")        // corner still shown
+	require.NotContains(t, out, "name + branch") // full label dropped first
 }
 
 func TestFooterShedsHintsKeepingHelp(t *testing.T) {
@@ -757,8 +781,8 @@ func TestFooterShedsHintsKeepingHelp(t *testing.T) {
 
 	footer := ansi.Strip(m.footerLine())
 	require.LessOrEqual(t, ansi.StringWidth(footer), 30)
-	require.Contains(t, footer, "? help")  // pinned hint survives the shedding
-	require.NotContains(t, footer, "quit") // a tail hint is dropped whole, not ellipsized
+	require.Contains(t, footer, "<?> help") // pinned hint survives the shedding
+	require.NotContains(t, footer, "quit")  // a tail hint is dropped whole, not ellipsized
 }
 
 func TestHeaderDropsCornerWhenNarrow(t *testing.T) {

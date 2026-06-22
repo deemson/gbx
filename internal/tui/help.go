@@ -68,35 +68,35 @@ var filterSyntax = []keyBinding{
 
 // footerListBindings / footerFilterBindings / footerArgBindings are the curated
 // one-line keybinding hints shown in the always-visible bottom footer, switched
-// by mode. They carry shorter labels than the ? overlay above (a footer is one
-// line, truncated to width), so they're a separate, deliberately terse surface.
+// by mode. They carry shorter labels than the ? overlay above (a footer sheds
+// hints to fit its width), so they're a separate, deliberately terse surface.
+// Keys are angle-bracketed to mirror the header's <C-f>/<C-1> hint style.
 var footerListBindings = []keyBinding{
-	{"enter", "actions"},
-	{"r", "refresh"},
-	{"f", "fetch"},
-	{"p", "pull"},
-	{"c", "checkout"},
-	{"b", "new branch"},
-	{"ctrl+f", "filter"},
-	{"?", "help"},
-	{"q", "quit"},
+	{"<C-f>", "filter"},
+	{"<r>", "refresh"},
+	{"<f>", "fetch"},
+	{"<p>", "pull"},
+	{"<c>", "checkout"},
+	{"<b>", "new branch"},
+	{"<?>", "help"},
+	{"<q>", "quit"},
 }
 
 var footerFilterBindings = []keyBinding{
-	{"enter", "apply"},
-	{"esc", "clear/close"},
-	{"ctrl+f", "cancel"},
+	{"<enter>", "apply"},
+	{"<esc>", "clear/close"},
+	{"<C-f>", "cancel"},
 }
 
 var footerArgBindings = []keyBinding{
-	{"enter", "apply"},
-	{"esc", "clear/close"},
-	{"tab/shift+tab", "cycle"},
+	{"<enter>", "apply"},
+	{"<esc>", "clear/close"},
+	{"<tab/S-tab>", "cycle"},
 }
 
 var footerActionBindings = []keyBinding{
-	{"1-9", "run"},
-	{"esc", "cancel"},
+	{"<1-9>", "run"},
+	{"<esc>", "cancel"},
 }
 
 // helpHeading styles a section header — cyan bold, the app's accent (the active
