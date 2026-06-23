@@ -109,17 +109,19 @@ var (
 
 // helpContent is the scrollable body of the help overlay: the three binding
 // sections, no title and no back hint (those live in the fixed header/footer).
-// Keys are colored and padded to a 10-wide column; descriptions stay default.
+// Keys are colored and padded to the section's widest key; descriptions stay
+// default.
 func helpContent() string {
 	var b strings.Builder
 	section := func(title string, bindings []keyBinding) {
 		b.WriteString(helpHeading.Render(title))
 		b.WriteString("\n\n")
+		keyCol := 0
 		for _, kb := range bindings {
-			pad := 10 - lipgloss.Width(kb.keys)
-			if pad < 0 {
-				pad = 0
-			}
+			keyCol = max(keyCol, lipgloss.Width(kb.keys))
+		}
+		for _, kb := range bindings {
+			pad := keyCol - lipgloss.Width(kb.keys)
 			fmt.Fprintf(&b, "  %s%s  %s\n", helpKey.Render(kb.keys), strings.Repeat(" ", pad), kb.desc)
 		}
 	}
