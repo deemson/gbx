@@ -340,6 +340,29 @@ func TestHelpShowsPIDAndLogPath(t *testing.T) {
 	require.Contains(t, out, "/state/gbx/gbx-4242.log")
 }
 
+// As the help header narrows, the left log block degrades in rungs while the
+// version/PID corner stays pinned: full path → ".../gbx-<pid>.log" → gone.
+func TestHelpHeaderLogDegradesButCornerStays(t *testing.T) {
+	m := newModel("x")
+	m.pid = 4242
+	m.logPath = "/state/gbx/gbx-4242.log"
+
+	// Rung 2: too narrow for the full path, wide enough for the abbreviation.
+	m.width = 33
+	rung2 := ansi.Strip(m.helpHeader())
+	require.Contains(t, rung2, "PID: 4242")
+	require.Contains(t, rung2, ".../gbx-4242.log")
+	require.NotContains(t, rung2, "/state/gbx/gbx-4242.log")
+
+	// Rung 3: too narrow even for the abbreviation — the label and path drop, the
+	// corner stays.
+	m.width = 20
+	rung3 := ansi.Strip(m.helpHeader())
+	require.Contains(t, rung3, "PID: 4242")
+	require.NotContains(t, rung3, "gbx-4242.log")
+	require.NotContains(t, rung3, "Log")
+}
+
 // Row 1 carries a dim "<C-f> " hint in front of the filter status (list mode),
 // and the always-visible footer shows list-mode action keys.
 func TestHeaderHintAndListFooter(t *testing.T) {

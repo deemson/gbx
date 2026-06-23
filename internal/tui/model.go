@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -931,10 +932,41 @@ func (m model) showCorner() bool {
 
 // helpHeader is the help overlay's fixed top chrome: the dim "Log" label over
 // the log path on the left, the shared version/PID block on the right, framed
-// by the same rule as the list header.
+// by the same rule as the list header. Unlike framedHeader, the version/PID
+// corner is pinned — never dropped. It's the left log block that degrades as the
+// width narrows: the full path shrinks to ".../gbx-<pid>.log", then the label
+// and path drop entirely (rung 3, an empty left). Each rung is the widest that
+// still fits beside the corner with cornerGap between them.
 func (m model) helpHeader() string {
-	left := lipgloss.JoinVertical(lipgloss.Left, colorDim.Render("Log"), colorDim.Render(m.logPath))
-	return m.framedHeader(left)
+	right := m.rightBlock()
+	logBlock := func(path string) string {
+		return lipgloss.JoinVertical(lipgloss.Left, colorDim.Render("Log"), colorDim.Render(path))
+	}
+	fits := func(left string) bool {
+		return m.width <= 0 || m.width >= lipgloss.Width(left)+lipgloss.Width(right)+cornerGap
+	}
+
+	left := logBlock(m.logPath)
+	if !fits(left) {
+		left = logBlock(".../" + filepath.Base(m.logPath))
+		if !fits(left) {
+			left = ""
+		}
+	}
+
+	var topBlock string
+	if m.width <= 0 {
+		topBlock = lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+	} else {
+		leftWidth := m.width - lipgloss.Width(right)
+		if leftWidth < 0 {
+			leftWidth = 0
+		}
+		left = lipgloss.NewStyle().Width(leftWidth).Render(left)
+		topBlock = lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+	}
+	rule := colorDim.Render(strings.Repeat("─", m.width))
+	return lipgloss.JoinVertical(lipgloss.Left, topBlock, rule)
 }
 
 // helpFooter is the help overlay's fixed bottom block: a full-width dim rule
