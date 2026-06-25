@@ -51,16 +51,25 @@ changelog:
       - '^docs'
       - '^build'
 
-homebrew_casks:
+# A formula (not a cask): Homebrew never quarantines formula-installed binaries,
+# so the unsigned gbx binary runs without the macOS Gatekeeper warning a cask
+# triggers. GoReleaser has deprecated `brews`, but it still works on the pinned
+# 2.16 — `goreleaser release` emits a warning and succeeds (only `goreleaser
+# check` treats the deprecation as an error).
+brews:
   - name: gbx
     repository:
       owner: deemson
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
     homepage: "https://github.com/deemson/gbx"
     description: "Manage your fleet of git repos with a pretty TUI"
-    dependencies:
-      - formula: git
+    license: "MIT"
+    install: |
+      bin.install "gbx"
+    test: |
+      system "#{bin}/gbx", "--help"
 
 release:
   github:
