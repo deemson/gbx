@@ -21,11 +21,28 @@ gen-demo-fixture:
     rm -rf {{demo_fixture_dir}} {{demo_fixture_dir}}-remotes
     GBX_FIXTURE_DIR={{demo_fixture_dir}} go test -tags fixture -run TestGenerateDemoFixture ./internal/demo/ -count=1
 
-# Record assets/demo.gif: regenerate the fixture, build gbx, film it with VHS.
-demo: gen-demo-fixture
+# Each clip regenerates the throwaway fixture first, so the mutating pull clip
+# always has its behind-repo and the order clips are filmed in never matters.
+# Record demo GIFs into assets/ — no arg films every demos/*.tape, a name (e.g.
+# `just demo filter`) films only demos/<name>.tape.
+demo name="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{justfile_directory()}}
     go build -o gbx .
-    mkdir -p {{justfile_directory()}}/assets
-    cd {{demo_fixture_dir}} && PATH="{{justfile_directory()}}:$PATH" vhs --output {{justfile_directory()}}/assets/demo.gif {{justfile_directory()}}/demo.tape
+    mkdir -p assets
+    if [ -n "{{name}}" ]; then
+      tapes=("demos/{{name}}.tape")
+    else
+      tapes=(demos/*.tape)
+    fi
+    for tape in "${tapes[@]}"; do
+      tname=$(basename "$tape" .tape)
+      echo "==> filming $tname"
+      just gen-demo-fixture
+      ( cd {{demo_fixture_dir}} && PATH="{{justfile_directory()}}:$PATH" \
+        vhs --output "{{justfile_directory()}}/assets/$tname.gif" "{{justfile_directory()}}/$tape" )
+    done
 
 # Destination for the bundled upstream examples.
 examples_dir := ".claude/skills/charm-tui/examples"

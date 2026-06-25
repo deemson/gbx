@@ -7,7 +7,7 @@ Manage your fleet of git repos with a pretty TUI.
 [![Go Reference](https://pkg.go.dev/badge/github.com/deemson/gbx.svg)](https://pkg.go.dev/github.com/deemson/gbx)
 [![License: MIT](https://img.shields.io/github/license/deemson/gbx)](LICENSE)
 
-![gbx demo](assets/demo.gif)
+![gbx overview](assets/overview.gif)
 
 `gbx` (**g**it **b**atch e**x**ecutor) is a terminal UI for everyone juggling a
 directory full of git checkouts — microservices, monorepo siblings, a folder of
@@ -58,6 +58,8 @@ Every command is non-destructive — there is no force-push, reset, or anything
 that throws away work. Press `?` in the app for the complete, always-current key
 reference.
 
+![running pull across the filtered set](assets/batch-pull.gif)
+
 ## Filtering
 
 `ctrl+f` opens the filter. The query is a space-separated list of terms, all
@@ -72,6 +74,8 @@ ANDed together; a repo shows only if every term matches:
 
 By default terms match against the repo **name or branch**. `ctrl+2` restricts
 matching to the name, `ctrl+3` to the branch, and `ctrl+1` returns to both.
+
+![filtering the fleet](assets/filter.gif)
 
 ## Configuration
 
@@ -107,6 +111,8 @@ directory (it takes over the terminal until it exits). `{{ env.NAME }}` expands
 to the environment variable `NAME`; an unset variable or unknown placeholder
 aborts the action rather than running the wrong command. Up to 9 actions are
 supported (bound to digits `1`–`9`).
+
+![launching a shell in a repo](assets/shell.gif)
 
 ## Requirements
 
