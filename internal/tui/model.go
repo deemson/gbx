@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -587,10 +588,7 @@ func (m model) listHeight() int {
 	if m.height <= 0 {
 		return 0
 	}
-	h := m.height - 3 - 2
-	if h < 1 {
-		h = 1
-	}
+	h := max(m.height-3-2, 1)
 	return h
 }
 
@@ -964,10 +962,7 @@ func (m model) framedHeader(left string) string {
 		topBlock = lipgloss.JoinHorizontal(lipgloss.Top, left, " ", m.rightBlock())
 	case m.showCorner():
 		right := m.rightBlock()
-		leftWidth := m.width - lipgloss.Width(right)
-		if leftWidth < 0 {
-			leftWidth = 0
-		}
+		leftWidth := max(m.width-lipgloss.Width(right), 0)
 		left = lipgloss.NewStyle().Width(leftWidth).Render(left)
 		topBlock = lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	default:
@@ -1070,10 +1065,7 @@ func (m model) helpHeader() string {
 	if m.width <= 0 {
 		topBlock = lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
 	} else {
-		leftWidth := m.width - lipgloss.Width(right)
-		if leftWidth < 0 {
-			leftWidth = 0
-		}
+		leftWidth := max(m.width-lipgloss.Width(right), 0)
 		left = lipgloss.NewStyle().Width(leftWidth).Render(left)
 		topBlock = lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	}
@@ -1091,10 +1083,7 @@ func (m model) helpFooter() string {
 	line := hint
 	if m.help.TotalLineCount() > m.help.VisibleLineCount() {
 		pct := colorDim.Render(fmt.Sprintf("%3.f%%", m.help.ScrollPercent()*100))
-		gap := m.width - lipgloss.Width(hint) - lipgloss.Width(pct)
-		if gap < 1 {
-			gap = 1
-		}
+		gap := max(m.width-lipgloss.Width(hint)-lipgloss.Width(pct), 1)
 		line = hint + strings.Repeat(" ", gap) + pct
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rule, line)
@@ -1155,8 +1144,8 @@ func renderFooterBindings(bindings []keyBinding) string {
 // hint except the pinned "<?>" help, which gates the full binding overlay and so
 // is the last to go. Returns -1 when only the pinned hint remains.
 func lastDroppableBinding(bindings []keyBinding) int {
-	for i := len(bindings) - 1; i >= 0; i-- {
-		if bindings[i].keys != "<?>" {
+	for i, v := range slices.Backward(bindings) {
+		if v.keys != "<?>" {
 			return i
 		}
 	}
@@ -1315,10 +1304,7 @@ func (m model) listContent() string {
 	visible := matched
 	if h := m.listHeight(); h > 0 && len(matched) > h {
 		offset = m.top
-		end := offset + h
-		if end > len(matched) {
-			end = len(matched)
-		}
+		end := min(offset+h, len(matched))
 		visible = matched[offset:end]
 	}
 

@@ -675,7 +675,7 @@ func TestCursorBandsOnlyTheCursoredRow(t *testing.T) {
 func scrollableModel(t *testing.T, n int) model {
 	t.Helper()
 	m := newModel("x")
-	for i := 0; i < n; i++ {
+	for i := range n {
 		m = m.addRepo(fmt.Sprintf("r%02d", i), git.Repo{})
 	}
 	return drive(t, m, tea.WindowSizeMsg{Width: 80, Height: 10})
@@ -716,7 +716,7 @@ func TestHalfPageUpAtTopPinsToZero(t *testing.T) {
 
 func TestFilterNarrowingPullsTopIntoRange(t *testing.T) {
 	m := scrollableModel(t, 12)
-	for i := 0; i < 12; i++ {
+	for range 12 {
 		m = drive(t, m, ctrlN) // cursor to the last row, window scrolled to the end
 	}
 	require.Equal(t, 7, m.top) // 12 rows - 5-row window
@@ -741,7 +741,7 @@ func TestScrollMarkersAppearOnlyWhenContentHidden(t *testing.T) {
 	require.Contains(t, middle, "↑")
 	require.Contains(t, middle, "↓")
 
-	for i := 0; i < 12; i++ {
+	for range 12 {
 		m = drive(t, m, ctrlN) // to the bottom
 	}
 	atBottom := ansi.Strip(m.View().Content)
@@ -856,7 +856,7 @@ func TestTruncatedBranchKeepsVisiblePrefix(t *testing.T) {
 	m = drive(t, m, tea.WindowSizeMsg{Width: 35, Height: 24})
 
 	line := ansi.Strip(m.listContent())
-	require.Contains(t, line, "mast…")    // truncated, prefix preserved
+	require.Contains(t, line, "mast…")     // truncated, prefix preserved
 	require.NotContains(t, line, "master") // the branch really was cut, not shown whole
 }
 
@@ -868,7 +868,7 @@ func TestTooNarrowReplacesScreenWithMessage(t *testing.T) {
 	out := ansi.Strip(m.View().Content)
 	require.Contains(t, out, "narrow")  // message shown (word-wrapped to fit)
 	require.NotContains(t, out, "repo") // the list is gone, not just narrowed
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		require.LessOrEqual(t, ansi.StringWidth(line), 18) // every line wrapped within the terminal
 	}
 }
