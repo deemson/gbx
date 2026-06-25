@@ -17,7 +17,7 @@ set of non-destructive git commands across whatever repos currently match.
 
 ## Install
 
-**Homebrew (macOS):**
+**Homebrew (macOS & Linux):**
 
 ```sh
 brew install deemson/tap/gbx
