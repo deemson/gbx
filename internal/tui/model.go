@@ -80,6 +80,11 @@ type model struct {
 	// narrowing the filter leaves it on whatever now sits at that slot.
 	cursor int
 
+	// top is the matched-set index of the first row shown in the scroll window.
+	// The clampView invariant keeps it in range and the cursor visible; it's 0
+	// whenever the whole matched set fits the window.
+	top int
+
 	// filter is the committed filter pattern applied to the visible row set
 	// while in list mode (and while c/b prompts are open). The filter prompt's
 	// draft (prompt.Value()) takes over live while modeFilterPrompt is active,
@@ -174,7 +179,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.prompt.SetWidth(msg.Width - lipgloss.Width(m.prompt.Prompt) - m.promptPrefixWidth())
 		m.help.SetWidth(msg.Width)
 		m.help.SetHeight(msg.Height - lipgloss.Height(m.helpHeader()) - lipgloss.Height(m.helpFooter()))
-		return m, nil
+		return m.clampView(), nil
 	case tea.KeyPressMsg:
 		return m.updateKey(msg)
 	case tea.MouseWheelMsg:
@@ -236,7 +241,7 @@ func (m model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch m.mode {
 	case modeFilterPrompt:
 		nm, cmd := m.updateFilterPrompt(msg)
-		return nm, cmd
+		return nm.clampView(), cmd
 	case modeCheckoutPrompt:
 		nm, cmd := m.updateCheckoutPrompt(msg)
 		return nm, cmd
@@ -262,10 +267,16 @@ func (m model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "up", "ctrl+p":
 		m.cursor--
-		return m.clampCursor(), nil
+		return m.clampView(), nil
 	case "down", "ctrl+n":
 		m.cursor++
-		return m.clampCursor(), nil
+		return m.clampView(), nil
+	case "ctrl+u":
+		m.cursor -= m.halfPage()
+		return m.clampView(), nil
+	case "ctrl+d":
+		m.cursor += m.halfPage()
+		return m.clampView(), nil
 	case "enter":
 		return m.openActionMenu()
 	case "ctrl+f":
@@ -288,13 +299,13 @@ func (m model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.openBranchPrompt()
 	case "ctrl+1":
 		m.field = fieldNameBranch
-		return m, nil
+		return m.clampView(), nil
 	case "ctrl+2":
 		m.field = fieldName
-		return m, nil
+		return m.clampView(), nil
 	case "ctrl+3":
 		m.field = fieldBranch
-		return m, nil
+		return m.clampView(), nil
 	}
 	return m, nil
 }
@@ -487,7 +498,7 @@ func (m model) openActionMenu() (model, tea.Cmd) {
 	if len(m.matched()) == 0 {
 		return m, nil
 	}
-	m = m.clampCursor()
+	m = m.clampView()
 	m.mode = modeActionMenu
 	return m, nil
 }
@@ -527,9 +538,16 @@ func (m model) fireAction(idx int) (model, tea.Cmd) {
 	return m, runAction(r.name, argv, r.repo.Path())
 }
 
-// clampCursor pins m.cursor into the matched set's current bounds (0 when empty),
-// keeping the stored position valid as movement and filtering change the list.
-func (m model) clampCursor() model {
+// scrollMargin is the rows clampView keeps between the cursor and the window's
+// top/bottom edge, so a couple of entries past the cursor stay in view. It
+// shrinks naturally at the list's ends, where there's nothing beyond to show.
+const scrollMargin = 2
+
+// clampView pins the cursor into the matched set's bounds, then scrolls m.top so
+// the cursor stays visible with scrollMargin rows of context, keeping m.top in
+// range. It's the single invariant run after every cursor move, half-page jump,
+// filter change, and resize — there are no per-case scroll rules.
+func (m model) clampView() model {
 	n := len(m.matched())
 	switch {
 	case n == 0, m.cursor < 0:
@@ -537,7 +555,52 @@ func (m model) clampCursor() model {
 	case m.cursor >= n:
 		m.cursor = n - 1
 	}
+	h := m.listHeight()
+	if h <= 0 || n <= h {
+		m.top = 0
+		return m
+	}
+	margin := scrollMargin
+	if 2*margin >= h {
+		margin = 0 // window too short to honor the margin on both sides
+	}
+	if m.cursor < m.top+margin {
+		m.top = m.cursor - margin
+	}
+	if m.cursor > m.top+h-1-margin {
+		m.top = m.cursor - h + 1 + margin
+	}
+	if m.top < 0 {
+		m.top = 0
+	}
+	if m.top > n-h {
+		m.top = n - h
+	}
 	return m
+}
+
+// listHeight is the scroll window's height: the terminal minus the 3-row framed
+// header (top, bottom, rule) and the 2-row footer (rule, hints). 0 before the
+// first resize. Deliberately marker-independent — the scroll markers' counts
+// depend on this height, so it must not route back through footer().
+func (m model) listHeight() int {
+	if m.height <= 0 {
+		return 0
+	}
+	h := m.height - 3 - 2
+	if h < 1 {
+		h = 1
+	}
+	return h
+}
+
+// halfPage is the cursor distance for ctrl+u/ctrl+d: half the window height,
+// floored at 1 so a tiny window still moves.
+func (m model) halfPage() int {
+	if h := m.listHeight(); h >= 2 {
+		return h / 2
+	}
+	return 1
 }
 
 // cursorIndex is the cursor's clamped index into the current matched set, or -1
@@ -841,11 +904,7 @@ func (m model) listView() string {
 	list := m.listContent()
 	footer := m.footer()
 	if m.height > 0 {
-		listHeight := m.height - 3 - lipgloss.Height(footer)
-		if listHeight < 1 {
-			listHeight = 1
-		}
-		listArea := lipgloss.NewStyle().Height(listHeight).Render(list)
+		listArea := lipgloss.NewStyle().Height(m.listHeight()).Render(list)
 		return lipgloss.JoinVertical(lipgloss.Left, header, listArea, footer)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, header, list, footer)
@@ -914,8 +973,61 @@ func (m model) framedHeader(left string) string {
 	default:
 		topBlock = left
 	}
-	rule := colorDim.Render(strings.Repeat("─", m.width))
+	rule := ruleWithMarker(m.width, m.scrollUpMarker())
 	return lipgloss.JoinVertical(lipgloss.Left, topBlock, rule)
+}
+
+// hiddenAbove / hiddenBelow count the matched rows scrolled out of view above
+// and below the window — the numbers the scroll markers report. Both are 0 when
+// the whole set fits (m.top is then 0).
+func (m model) hiddenAbove() int {
+	if m.listHeight() <= 0 {
+		return 0
+	}
+	return m.top
+}
+
+func (m model) hiddenBelow() int {
+	h := m.listHeight()
+	if h <= 0 {
+		return 0
+	}
+	if below := len(m.matched()) - (m.top + h); below > 0 {
+		return below
+	}
+	return 0
+}
+
+// scrollUpMarker / scrollDownMarker are the dim "N more" hints spliced into the
+// list's top/bottom rule lines, empty when nothing is hidden that direction.
+func (m model) scrollUpMarker() string {
+	if n := m.hiddenAbove(); n > 0 {
+		return colorDim.Render(fmt.Sprintf("↑ %d more", n))
+	}
+	return ""
+}
+
+func (m model) scrollDownMarker() string {
+	if n := m.hiddenBelow(); n > 0 {
+		return colorDim.Render(fmt.Sprintf("↓ %d more", n))
+	}
+	return ""
+}
+
+// ruleWithMarker renders the full-width dim rule with marker (already-styled
+// text) spliced in left-aligned, two dashes of margin to its left. Falls back to
+// a plain rule when it wouldn't fit.
+func ruleWithMarker(width int, marker string) string {
+	plain := colorDim.Render(strings.Repeat("─", max(width, 0)))
+	if width <= 0 || marker == "" {
+		return plain
+	}
+	const leading = 2
+	right := width - lipgloss.Width(marker) - 2 - leading // 2 spaces flank the marker
+	if right < 0 {
+		return plain
+	}
+	return colorDim.Render(strings.Repeat("─", leading)) + " " + marker + " " + colorDim.Render(strings.Repeat("─", right))
 }
 
 // showCorner reports whether the version/PID corner block still fits beside the
@@ -991,7 +1103,7 @@ func (m model) helpFooter() string {
 // footer is the list view's always-visible bottom block: a full-width dim rule
 // mirroring the header's, above the per-mode keybinding hint line.
 func (m model) footer() string {
-	rule := colorDim.Render(strings.Repeat("─", m.width))
+	rule := ruleWithMarker(m.width, m.scrollDownMarker())
 	return lipgloss.JoinVertical(lipgloss.Left, rule, m.footerLine())
 }
 
@@ -1196,6 +1308,20 @@ func (m model) listContent() string {
 		return "no matches"
 	}
 
+	// Window the matched rows to the visible scroll range. m.top is kept valid by
+	// clampView; when the whole set fits (or the height is unknown) the window is
+	// the full list. The up/down "N more" markers live on the surrounding rules.
+	offset := 0
+	visible := matched
+	if h := m.listHeight(); h > 0 && len(matched) > h {
+		offset = m.top
+		end := offset + h
+		if end > len(matched) {
+			end = len(matched)
+		}
+		visible = matched[offset:end]
+	}
+
 	// Column widths are pinned to the full repo list, not just the matched
 	// subset, so they stay put as the filter narrows the visible rows.
 	nameWidth, branchWidth, trackingWidth, stateWidth, diffWidth := m.colWidths()
@@ -1227,8 +1353,8 @@ func (m model) listContent() string {
 	hlBranch := m.field != fieldName
 
 	cur := m.cursorIndex()
-	rows := make([]string, len(matched))
-	for i, r := range matched {
+	rows := make([]string, len(visible))
+	for i, r := range visible {
 		// A column narrowed below its content is truncated plain (the ellipsis
 		// would collide with the match underline); only an untruncated cell is
 		// highlighted.
@@ -1255,7 +1381,7 @@ func (m model) listContent() string {
 			}
 		}
 		rows[i] = lipgloss.JoinHorizontal(lipgloss.Top, cols...)
-		if i == cur {
+		if offset+i == cur {
 			rows[i] = bandRow(rows[i], m.width)
 		}
 	}

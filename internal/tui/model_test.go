@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -667,6 +668,85 @@ func TestCursorBandsOnlyTheCursoredRow(t *testing.T) {
 	lines = strings.Split(m.listContent(), "\n")
 	require.NotContains(t, lines[0], cursorBandSeq)
 	require.Contains(t, lines[1], cursorBandSeq) // band follows the cursor down
+}
+
+// scrollableModel builds a model of n repos sized to a 5-row scroll window
+// (listHeight = height-3-2 = 5), more rows than fit so scrolling is in play.
+func scrollableModel(t *testing.T, n int) model {
+	t.Helper()
+	m := newModel("x")
+	for i := 0; i < n; i++ {
+		m = m.addRepo(fmt.Sprintf("r%02d", i), git.Repo{})
+	}
+	return drive(t, m, tea.WindowSizeMsg{Width: 80, Height: 10})
+}
+
+func TestCursorMovePastEdgeScrollsWindow(t *testing.T) {
+	m := scrollableModel(t, 12) // window 5, margin 2 → cursor locks to the middle row
+
+	m = drive(t, m, ctrlN, ctrlN) // cursor 0 -> 2, still within the top window
+	require.Equal(t, 2, m.cursor)
+	require.Equal(t, 0, m.top)
+
+	m = drive(t, m, ctrlN) // cursor 3 crosses the bottom margin → window follows
+	require.Equal(t, 3, m.cursor)
+	require.Equal(t, 1, m.top)
+}
+
+func TestHalfPageJumpMovesCursorAndKeepsItVisible(t *testing.T) {
+	m := scrollableModel(t, 12) // listHeight 5 → halfPage 2
+
+	m = drive(t, m, ctrlD)
+	require.Equal(t, 2, m.cursor) // advanced by a half-page
+	m = drive(t, m, ctrlD)
+	require.Equal(t, 4, m.cursor)
+	require.GreaterOrEqual(t, m.cursor, m.top) // cursor stays in the window
+	require.Less(t, m.cursor, m.top+m.listHeight())
+}
+
+func TestHalfPageUpAtTopPinsToZero(t *testing.T) {
+	m := scrollableModel(t, 12)
+	m = drive(t, m, ctrlD, ctrlD, ctrlD) // scroll down first
+	require.Positive(t, m.top)
+
+	m = drive(t, m, ctrlU, ctrlU, ctrlU, ctrlU, ctrlU) // overshoot the top
+	require.Equal(t, 0, m.cursor)
+	require.Equal(t, 0, m.top) // clamped, no wrap
+}
+
+func TestFilterNarrowingPullsTopIntoRange(t *testing.T) {
+	m := scrollableModel(t, 12)
+	for i := 0; i < 12; i++ {
+		m = drive(t, m, ctrlN) // cursor to the last row, window scrolled to the end
+	}
+	require.Equal(t, 7, m.top) // 12 rows - 5-row window
+
+	opened, _ := m.Update(keyCtrlF)
+	m = send(t, opened.(model), "^r11") // narrows to a single match
+	applied, _ := m.Update(keyEnter)
+	m = applied.(model)
+
+	require.Equal(t, 0, m.top) // one match fits the window → scrolled back to top
+}
+
+func TestScrollMarkersAppearOnlyWhenContentHidden(t *testing.T) {
+	m := scrollableModel(t, 12)
+
+	atTop := ansi.Strip(m.View().Content)
+	require.NotContains(t, atTop, "↑")     // nothing hidden above
+	require.Contains(t, atTop, "↓ 7 more") // 7 rows below the window
+
+	m = drive(t, m, ctrlD, ctrlD) // cursor 4 → window scrolled into the middle
+	middle := ansi.Strip(m.View().Content)
+	require.Contains(t, middle, "↑")
+	require.Contains(t, middle, "↓")
+
+	for i := 0; i < 12; i++ {
+		m = drive(t, m, ctrlN) // to the bottom
+	}
+	atBottom := ansi.Strip(m.View().Content)
+	require.Contains(t, atBottom, "↑")
+	require.NotContains(t, atBottom, "↓") // nothing hidden below
 }
 
 func TestEnterOpensActionMenuOverCursor(t *testing.T) {
