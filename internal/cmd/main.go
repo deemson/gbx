@@ -69,11 +69,17 @@ func Main(version string) {
 			if err != nil {
 				log.Error().Err(err).Msg("tui exited with error")
 			}
-			logFile.Close()
+			_ = logFile.Close()
 			if err != nil {
-				os.Rename(logPath, strings.TrimSuffix(logPath, ".log")+"-crash.log")
+				crashPath := strings.TrimSuffix(logPath, ".log") + "-crash.log"
+				if renameErr := os.Rename(logPath, crashPath); renameErr != nil {
+					// Renaming the post-mortem log failed; it still exists under its
+					// original name, so point the user there rather than at the
+					// "-crash.log" we couldn't create.
+					clilog.Errorf("could not save crash log as %s: %v\ncrash log left at %s", crashPath, renameErr, logPath)
+				}
 			} else {
-				os.Remove(logPath)
+				_ = os.Remove(logPath)
 			}
 
 			return err

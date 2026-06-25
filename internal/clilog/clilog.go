@@ -25,7 +25,7 @@ func log(w io.Writer, level string, message string) {
 	// of color codes: TimeOnly (8) + space + level (1) + space = 11.
 	indent := strings.Repeat(" ", 11)
 	message = strings.ReplaceAll(message, "\n", "\n"+indent)
-	fmt.Fprintln(w, prefix+message)
+	_, _ = fmt.Fprintln(w, prefix+message)
 }
 
 func Info(message string) {

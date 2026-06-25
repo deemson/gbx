@@ -2,6 +2,17 @@
 _default:
 	@just --list
 
+# Run golangci-lint over the module.
+lint:
+	golangci-lint run
+
+# Run the test suite.
+test:
+	go test ./...
+
+# Lint and test, as CI does.
+check: lint test
+
 # Destination for the bundled upstream examples.
 examples_dir := ".claude/skills/charm-tui/examples"
 

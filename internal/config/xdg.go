@@ -27,7 +27,7 @@ func Find() (string, Config, error) {
 	if err != nil {
 		return configPath, Config{}, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	cfg, err := FromReader(f)
 	if err != nil {
 		return configPath, Config{}, err
