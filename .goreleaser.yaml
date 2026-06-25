@@ -1,0 +1,68 @@
+version: 2
+
+project_name: gbx
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: gbx
+    main: .
+    binary: gbx
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version=v{{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+  filters:
+    exclude:
+      - '^chore'
+      - '^ci'
+      - '^test'
+      - '^docs'
+      - '^build'
+
+homebrew_casks:
+  - name: gbx
+    repository:
+      owner: deemson
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/deemson/gbx"
+    description: "Manage your fleet of git repos with a pretty TUI"
+    dependencies:
+      - formula: git
+
+release:
+  github:
+    owner: deemson
+    name: gbx
