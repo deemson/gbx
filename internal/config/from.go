@@ -16,8 +16,8 @@ func FromBytes(data []byte) (Config, error) {
 		}
 		return Config{}, err
 	}
-	if ev := jsonSchema.Validate(v); !ev.IsValid() {
-		return Config{}, newValidationError(ev.DetailedErrors())
+	if err := validate(v); err != nil {
+		return Config{}, err
 	}
 	var cfg Config
 	if err := toml.Unmarshal(data, &cfg); err != nil {

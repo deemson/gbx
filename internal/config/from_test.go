@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/deemson/gbx/internal/config"
+	"github.com/pelletier/go-toml/v2"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -45,6 +46,14 @@ func (s *FromBytesSuite) TestBadTOML() {
 			}
 		})
 	}
+}
+
+func (s *FromBytesSuite) TestDefaultRoundTrips() {
+	data, err := toml.Marshal(config.Default())
+	s.Require().NoError(err)
+	cfg, err := config.FromBytes(data)
+	s.Require().NoError(err)
+	s.Assert().Equal(config.Default(), cfg)
 }
 
 func (s *FromBytesSuite) TestValidation() {
@@ -112,6 +121,23 @@ func (s *FromBytesSuite) TestValidation() {
 			},
 			err: []string{
 				"actions: must have at least 1 items",
+			},
+		},
+		"label wrong type": {
+			cfg: []string{
+				`[[actions]]`, `label = 42`, `command = ["x"]`,
+			},
+			err: []string{
+				"actions.0.label: expected string, got integer",
+			},
+		},
+		"command item wrong type": {
+			cfg: []string{
+				`[[actions]]`, `label = "x"`, `command = [1, 2]`,
+			},
+			err: []string{
+				"actions.0.command.0: expected string, got integer",
+				"actions.0.command.1: expected string, got integer",
 			},
 		},
 	}
