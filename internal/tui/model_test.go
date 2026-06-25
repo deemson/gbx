@@ -846,6 +846,20 @@ func TestNarrowWidthTruncatesNameAndBranch(t *testing.T) {
 	require.Contains(t, lines[0], "…")                     // an elastic column was truncated
 }
 
+func TestTruncatedBranchKeepsVisiblePrefix(t *testing.T) {
+	// At width 35 the branch column shrinks to 5, so the colored "master" branch
+	// is truncated. It must keep its visible prefix ("mast…"), not collapse to a
+	// bare "…": truncating the already-styled string would slice into its leading
+	// ANSI escape and drop every visible rune.
+	m := newModel("x").addRepo("a-very-long-repo-name", git.Repo{})
+	m = m.setStatus("a-very-long-repo-name", repoStatus{branch: "master", hasUpstream: true})
+	m = drive(t, m, tea.WindowSizeMsg{Width: 35, Height: 24})
+
+	line := ansi.Strip(m.listContent())
+	require.Contains(t, line, "mast…")    // truncated, prefix preserved
+	require.NotContains(t, line, "master") // the branch really was cut, not shown whole
+}
+
 func TestTooNarrowReplacesScreenWithMessage(t *testing.T) {
 	m := newModel("x").addRepo("repo", git.Repo{})
 	m = drive(t, m, tea.WindowSizeMsg{Width: 18, Height: 24})

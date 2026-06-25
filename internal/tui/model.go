@@ -1355,9 +1355,11 @@ func (m model) listContent() string {
 	cur := m.cursorIndex()
 	rows := make([]string, len(visible))
 	for i, r := range visible {
-		// A column narrowed below its content is truncated plain (the ellipsis
-		// would collide with the match underline); only an untruncated cell is
-		// highlighted.
+		// A column narrowed below its content is truncated without the filter
+		// match underline (it would collide with the ellipsis); only an
+		// untruncated cell is highlighted. The branch keeps its hash hue either
+		// way — re-applied after truncation, since truncating the styled string
+		// would slice into its ANSI escape.
 		name := r.name
 		if lipgloss.Width(name) > nameRender {
 			name = truncate(name, nameRender)
@@ -1365,9 +1367,13 @@ func (m model) listContent() string {
 			name = renderHighlight(r.name, matchPositions(terms, r.name), lipgloss.NewStyle())
 		}
 		branch := branchText(r)
-		if lipgloss.Width(branch) > branchRender {
+		switch {
+		case r.status == nil:
+			// Plain "..." placeholder; safe to slice by rune.
 			branch = truncate(branch, branchRender)
-		} else if hlBranch && r.status != nil {
+		case lipgloss.Width(branch) > branchRender:
+			branch = branchStyle(r.status.branch).Render(truncate(r.status.branch, branchRender))
+		case hlBranch:
 			branch = renderHighlight(r.status.branch, matchPositions(terms, r.status.branch), branchStyle(r.status.branch))
 		}
 		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(name), "  ", trackingCol.Render(trackingText(r)), "  ", branchCol.Render(branch), "  ", stateCol.Render(stateText(r)), "  ", diffCol.Render(diffText(r))}
