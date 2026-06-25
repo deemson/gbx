@@ -13,6 +13,20 @@ test:
 # Lint and test, as CI does.
 check: lint test
 
+# Where the throwaway demo repos are built (regenerated on every run).
+demo_fixture_dir := "/tmp/gbx-demo-fixture"
+
+# Build the throwaway tree of git repos the demo films against.
+gen-demo-fixture:
+    rm -rf {{demo_fixture_dir}} {{demo_fixture_dir}}-remotes
+    GBX_FIXTURE_DIR={{demo_fixture_dir}} go test -tags fixture -run TestGenerateDemoFixture ./internal/demo/ -count=1
+
+# Record assets/demo.gif: regenerate the fixture, build gbx, film it with VHS.
+demo: gen-demo-fixture
+    go build -o gbx .
+    mkdir -p {{justfile_directory()}}/assets
+    cd {{demo_fixture_dir}} && PATH="{{justfile_directory()}}:$PATH" vhs --output {{justfile_directory()}}/assets/demo.gif {{justfile_directory()}}/demo.tape
+
 # Destination for the bundled upstream examples.
 examples_dir := ".claude/skills/charm-tui/examples"
 
