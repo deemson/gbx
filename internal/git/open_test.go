@@ -4,9 +4,11 @@ import (
 	"context"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 
 	"github.com/deemson/gbx/internal/git"
+	"github.com/deemson/gbx/internal/git/gitest"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -42,5 +44,22 @@ func (s *OpenSuite) TestErrNotRepository() {
 	_, err := git.Open(context.Background(), dir)
 	if s.Assert().Error(err) {
 		s.Assert().ErrorIs(err, git.ErrNotRepository)
+	}
+}
+
+func (s *OpenSuite) TestRoot() {
+	dir, err := filepath.EvalSymlinks(s.T().TempDir())
+	s.Require().NoError(err)
+	subDir := path.Join(dir, "sub")
+
+	_ = gitest.Init(s.T(), dir)
+
+	err = os.Mkdir(subDir, 0755)
+	s.Require().NoError(err)
+
+	repo, err := git.Open(context.Background(), subDir)
+	if s.Assert().NoError(err) {
+		s.Assert().Equal(dir, repo.Root())
+		s.Assert().Equal(subDir, repo.Path())
 	}
 }

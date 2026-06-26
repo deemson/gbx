@@ -1,6 +1,7 @@
 package git
 
 import (
+	"bytes"
 	"context"
 	"strings"
 
@@ -25,5 +26,8 @@ func Open(ctx context.Context, path string) (Repo, error) {
 		}
 		return Repo{}, NewUnknownRunErr(res, err)
 	}
-	return Repo{path: path}, nil
+	return Repo{
+		root: string(bytes.TrimSpace(res.Stdout)),
+		path: path,
+	}, nil
 }

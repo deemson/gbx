@@ -71,6 +71,21 @@ func TestNonRepoDirsIgnored(t *testing.T) {
 	require.NotContains(t, out, "loose-file")
 }
 
+func TestSubdirsOfEnclosingRepoExcluded(t *testing.T) {
+	dir := t.TempDir()
+	gitest.Init(t, dir) // gbx run inside a repo
+	for _, name := range []string{"sub-a", "sub-b"} {
+		require.NoError(t, os.Mkdir(filepath.Join(dir, name), 0755))
+	}
+
+	tp := runTestProgram(t, dir)
+	tp.waitForContent("no repos") // subfolders share the enclosing root → not listed
+
+	out := tp.out.String()
+	require.NotContains(t, out, "sub-a")
+	require.NotContains(t, out, "sub-b")
+}
+
 func TestRepoShowsCleanState(t *testing.T) {
 	dir := t.TempDir()
 	repo := mkRepo(t, dir, "withcommit")

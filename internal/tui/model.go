@@ -19,6 +19,7 @@ import (
 	"github.com/deemson/gbx/internal/cmdxtmpl"
 	appconfig "github.com/deemson/gbx/internal/config"
 	"github.com/deemson/gbx/internal/git"
+	"github.com/rs/zerolog/log"
 )
 
 type repoEntry struct {
@@ -143,6 +144,14 @@ func newModel(dir string) model {
 	sp.Style = colorDim
 	hv := viewport.New()
 	hv.SetContent(helpContent())
+	// Resolve symlinks so dir matches git's canonicalized repo root: discovery
+	// drops entries whose toplevel != scanned path, and os.Getwd can hand back a
+	// symlinked path that would never string-match the resolved root.
+	if resolved, err := filepath.EvalSymlinks(dir); err != nil {
+		log.Error().Err(err).Str("dir", dir).Msg("failed to resolve dir symlinks")
+	} else {
+		dir = resolved
+	}
 	return model{
 		dir:       dir,
 		prompt:    p,

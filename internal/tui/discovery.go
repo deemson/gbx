@@ -46,6 +46,12 @@ func openRepoCmd(dir string, entry os.DirEntry) tea.Cmd {
 			}
 			return nil
 		}
+		// Opened only because it sits inside an enclosing repo (its toplevel is
+		// elsewhere) — not its own root, so it's not a listable repo. Silent skip,
+		// like the non-repo case.
+		if repo.Root() != repo.Path() {
+			return nil
+		}
 		return repoFoundMsg{name: entry.Name(), repo: repo}
 	}
 }

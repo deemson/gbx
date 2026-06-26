@@ -9,7 +9,12 @@ import (
 )
 
 type Repo struct {
+	root string
 	path string
+}
+
+func (r Repo) Root() string {
+	return r.root
 }
 
 func (r Repo) Path() string {
