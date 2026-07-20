@@ -5,20 +5,48 @@ description: Local Bubble Tea v2, Bubbles v2, and Lip Gloss v2 examples and tuto
 
 # charm-tui
 
-Bundled, **v2** Charm examples matching the project's stack
-(`bubbletea/v2`, `bubbles/v2`, `lipgloss/v2`). Read the relevant `main.go`
-before writing TUI code — **do not** rely on recalled API shape, which is
-mostly v1 and wrong (e.g. v2 imports are `charm.land/...v2`, and `Update` /
-`View` signatures and message types differ from v1).
+**v2** Charm examples matching the project's stack (`bubbletea/v2`,
+`bubbles/v2`, `lipgloss/v2`). Read the relevant `main.go` before writing TUI
+code — **do not** rely on recalled API shape, which is mostly v1 and wrong
+(e.g. v2 imports are `charm.land/...v2`, and `Update` / `View` signatures and
+message types differ from v1).
+
+## Getting the repos
+
+The examples are nested modules, so they are **not** in the module cache —
+they only exist in a clone. Clone each repo at the tag matching `go.mod`:
+
+```sh
+v=$(go list -m -f '{{.Version}}' charm.land/bubbletea/v2)
+[ -d ".charm-repos/bubbletea@$v" ] || git -c advice.detachedHead=false clone \
+  --quiet --depth 1 --branch "$v" \
+  https://github.com/charmbracelet/bubbletea ".charm-repos/bubbletea@$v"
+
+v=$(go list -m -f '{{.Version}}' charm.land/lipgloss/v2)
+[ -d ".charm-repos/lipgloss@$v" ] || git -c advice.detachedHead=false clone \
+  --quiet --depth 1 --branch "$v" \
+  https://github.com/charmbracelet/lipgloss ".charm-repos/lipgloss@$v"
+```
+
+Both tags are annotated, so git prints a benign `refs/tags/vX is not a commit!`
+warning on a shallow clone. Ignore it — the clone is correct.
+
+`.charm-repos/` is gitignored and sits at the **repo root**; all paths below
+are relative to it. The version in the directory name is what keeps the clone
+honest — after a `go.mod` bump the path simply won't exist yet, so re-running
+the above re-clones at the new tag.
 
 ## How to use
 
-1. Find the closest example/tutorial in the maps below.
-2. `Read` its `main.go` (and `README.md` when present) to copy the v2 idiom.
-3. Match the example's patterns, then adapt.
+1. Find the closest example/tutorial in the maps below — rows are bare
+   directory names.
+2. Resolve it to a path: Bubble Tea rows live under
+   `bubbletea@<version>/examples/` (or `tutorials/` where noted), Lip Gloss
+   rows under `lipgloss@<version>/examples/`.
+3. `Read` its `main.go` (and `README.md` when present) to copy the v2 idiom,
+   then adapt.
 
-Full indexes: `examples/bubbletea/examples/README.md` and the `lipgloss`
-example dirs. Paths below are relative to this skill directory.
+Full index: `bubbletea@<version>/examples/README.md`.
 
 ## Reading library source
 
@@ -32,12 +60,10 @@ types) read the **pinned source in the module cache** — it always matches
 
 ## Learn the fundamentals first
 
-- `examples/bubbletea/tutorials/basics/` — Model/Init/Update/View, key
-  handling, the core loop.
-- `examples/bubbletea/tutorials/commands/` — `tea.Cmd`, async work, custom
-  messages.
+- `tutorials/basics/` — Model/Init/Update/View, key handling, the core loop.
+- `tutorials/commands/` — `tea.Cmd`, async work, custom messages.
 
-## Bubble Tea — by need (`examples/bubbletea/examples/<dir>/main.go`)
+## Bubble Tea — by need
 
 | Need | Example dir |
 |---|---|
@@ -57,7 +83,7 @@ types) read the **pinned source in the module cache** — it always matches
 | Alt screen / window size | `altscreen-toggle`, `fullscreen`, `window-size` |
 | Focus, key enhancements | `focus-blur`, `keyboard-enhancements`, `print-key` |
 
-## Lip Gloss — by need (`examples/lipgloss/examples/<dir>/`)
+## Lip Gloss — by need
 
 | Need | Example dir |
 |---|---|
