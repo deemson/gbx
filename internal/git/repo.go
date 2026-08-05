@@ -151,3 +151,17 @@ func (r Repo) Switch(ctx context.Context, branch string) error {
 	}
 	return nil
 }
+
+func (r Repo) SwitchCreate(ctx context.Context, branch string) error {
+	res, err := r.runGit(ctx, "switch", "--create", branch)
+	if err != nil {
+		if res.ExitCode == 128 {
+			stderr := string(res.Stderr)
+			if strings.Contains(stderr, fmt.Sprintf("a branch named '%s' already exists", branch)) {
+				return ErrBranchAlreadyExists
+			}
+		}
+		return NewUnknownRunErr(res, err)
+	}
+	return nil
+}
