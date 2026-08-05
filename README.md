@@ -12,8 +12,9 @@ Manage your fleet of git repos with a pretty TUI.
 `gbx` (**g**it **b**atch e**x**ecutor) is a terminal UI for everyone juggling a
 directory full of git checkouts — microservices, monorepo siblings, a folder of
 cloned projects. It shows the branch, ahead/behind, and dirty state of every
-repo at once, lets you filter the list with an fzf-style query, and runs a fixed
-set of non-destructive git commands across whatever repos currently match.
+repo at once, lets you filter or search the list with an fzf-style query, and
+runs a fixed set of non-destructive git commands across whatever repos currently
+match.
 
 ## Install
 
@@ -51,6 +52,7 @@ matching the filter**:
 | `b`       | create and switch to a new branch       |
 | `enter`   | open the actions menu for the repo at the cursor |
 | `ctrl+f`  | open the filter prompt                  |
+| `ctrl+s`  | open the search prompt (jump the cursor to matches) |
 | `?`       | show all key bindings                   |
 | `q`       | quit                                    |
 
@@ -58,12 +60,10 @@ Every command is non-destructive — there is no force-push, reset, or anything
 that throws away work. Press `?` in the app for the complete, always-current key
 reference.
 
-![running pull across the filtered set](assets/batch-pull.gif)
+## Filter & search
 
-## Filtering
-
-`ctrl+f` opens the filter. The query is a space-separated list of terms, all
-ANDed together; a repo shows only if every term matches:
+Both the filter and the search prompt take the same query — a space-separated
+list of terms, all ANDed together; a repo matches only if every term matches:
 
 | term    | matches             |
 | ------- | ------------------- |
@@ -73,9 +73,14 @@ ANDed together; a repo shows only if every term matches:
 | `!foo`  | exclude `foo`       |
 
 By default terms match against the repo **name or branch**. `ctrl+2` restricts
-matching to the name, `ctrl+3` to the branch, and `ctrl+1` returns to both.
+matching to the name, `ctrl+3` to the branch, and `ctrl+1` returns to both — in
+either prompt.
 
-![filtering the fleet](assets/filter.gif)
+**Filter** (`ctrl+f`) narrows the list to the matching repos; the git commands
+then run across exactly that set. **Search** (`ctrl+s`) leaves every repo visible
+and instead jumps the cursor to the matches, dimming the rest — `↓`/`↑` walk
+between them. Filter is for *acting on* a subset; search is for *finding* one
+repo in a list you want to keep whole.
 
 ## Configuration
 
@@ -111,8 +116,6 @@ directory (it takes over the terminal until it exits). `{{ env.NAME }}` expands
 to the environment variable `NAME`; an unset variable or unknown placeholder
 aborts the action rather than running the wrong command. Up to 9 actions are
 supported (bound to digits `1`–`9`).
-
-![launching a shell in a repo](assets/shell.gif)
 
 ## Requirements
 
