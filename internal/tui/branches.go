@@ -14,7 +14,7 @@ type branchesLoadedMsg struct {
 }
 
 // branchesCmd loads one repo's local branch names off the UI goroutine. They
-// feed checkout autocomplete; a load error is logged and yields no message (the
+// feed switch autocomplete; a load error is logged and yields no message (the
 // repo just contributes nothing to the suggestions).
 func branchesCmd(name string, repo git.Repo) tea.Cmd {
 	return func() tea.Msg {

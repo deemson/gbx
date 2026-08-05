@@ -374,13 +374,13 @@ func TestHeaderHintAndListFooter(t *testing.T) {
 	require.Contains(t, out, "<C-f> Filter:")
 	require.Contains(t, out, "<C-f> filter") // filter leads the footer now
 	require.Contains(t, out, "<r> refresh")
-	require.Contains(t, out, "<c> checkout")
+	require.Contains(t, out, "<s> switch")
 	require.Contains(t, out, "<q> quit")
 	require.NotContains(t, out, "actions") // enter hint removed from the footer
 }
 
 // Opening the filter prompt keeps the "<C-f> " hint and switches the footer to
-// the prompt keys; the checkout prompt drops the hint (row 1 isn't the filter).
+// the prompt keys; the switch prompt drops the hint (row 1 isn't the filter).
 func TestFooterFollowsPromptMode(t *testing.T) {
 	m := newModel("x").addRepo("a", git.Repo{})
 	m = drive(t, m, tea.WindowSizeMsg{Width: 100, Height: 40}, keyCtrlF)
@@ -391,20 +391,20 @@ func TestFooterFollowsPromptMode(t *testing.T) {
 	require.NotContains(t, out, "<r> refresh")
 
 	m = drive(t, newModel("x").addRepo("a", git.Repo{}),
-		tea.WindowSizeMsg{Width: 100, Height: 40}, tea.KeyPressMsg{Code: 'c', Text: "c"})
+		tea.WindowSizeMsg{Width: 100, Height: 40}, tea.KeyPressMsg{Code: 's', Text: "s"})
 	out = ansi.Strip(m.View().Content)
-	require.Contains(t, out, "Checkout:")
-	require.NotContains(t, out, "<C-f> Checkout:")
+	require.Contains(t, out, "Switch:")
+	require.NotContains(t, out, "<C-f> Switch:")
 }
 
-func TestCOpensCheckoutPromptWithSuggestions(t *testing.T) {
+func TestSOpensSwitchPromptWithSuggestions(t *testing.T) {
 	m := newModel("x").addRepo("a", git.Repo{})
 	m = m.setBranches("a", []string{"main", "feat"})
 
-	opened, _ := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	opened, _ := m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	m = opened.(model)
 
-	require.Equal(t, modeCheckoutPrompt, m.mode)
+	require.Equal(t, modeSwitchPrompt, m.mode)
 	require.Equal(t, []string{"feat", "main"}, m.suggestions) // visibleBranches, sorted
 }
 
@@ -433,12 +433,12 @@ func TestBranchTabCyclesSuggestions(t *testing.T) {
 	require.Equal(t, "feat", m.prompt.Value()) // first sorted branch
 }
 
-func TestCheckoutTabCyclesBranchSuggestions(t *testing.T) {
+func TestSwitchTabCyclesBranchSuggestions(t *testing.T) {
 	m := newModel("x").addRepo("a", git.Repo{}).addRepo("b", git.Repo{})
 	m = m.setBranches("a", []string{"main", "feat"})
 	m = m.setBranches("b", []string{"main", "other"})
 
-	opened, _ := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	opened, _ := m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	m = opened.(model)
 	tabbed, _ := m.Update(keyTab)
 	m = tabbed.(model)
@@ -446,11 +446,11 @@ func TestCheckoutTabCyclesBranchSuggestions(t *testing.T) {
 	require.Equal(t, "feat", m.prompt.Value()) // first sorted branch
 }
 
-func TestCheckoutShiftTabCyclesBackward(t *testing.T) {
+func TestSwitchShiftTabCyclesBackward(t *testing.T) {
 	m := newModel("x").addRepo("a", git.Repo{})
 	m = m.setBranches("a", []string{"main", "feat"})
 
-	opened, _ := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	opened, _ := m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	m = opened.(model)
 	back, _ := m.Update(keyShiftTab)
 	m = back.(model)
@@ -458,21 +458,21 @@ func TestCheckoutShiftTabCyclesBackward(t *testing.T) {
 	require.Equal(t, "main", m.prompt.Value()) // wraps to last sorted branch
 }
 
-func TestCheckoutSuggestionsFilteredByDraft(t *testing.T) {
+func TestSwitchSuggestionsFilteredByDraft(t *testing.T) {
 	m := newModel("x").addRepo("a", git.Repo{})
 	m = m.setBranches("a", []string{"main", "feat", "develop"})
 
-	opened, _ := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	opened, _ := m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	m = opened.(model)
 	m = send(t, m, "fe") // fuzzy-match: "feat" survives
 
 	require.Equal(t, []string{"feat"}, m.suggestions)
 }
 
-func TestCheckoutEnterRunsOnFiltered(t *testing.T) {
+func TestSwitchEnterRunsOnFiltered(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
-	opened, _ := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	opened, _ := m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	m = opened.(model)
 	m = send(t, m, "main")
 	applied, cmd := m.Update(keyEnter)
@@ -483,7 +483,7 @@ func TestCheckoutEnterRunsOnFiltered(t *testing.T) {
 	require.NotNil(t, cmd)
 }
 
-func TestBranchEnterRunsCheckoutBranch(t *testing.T) {
+func TestBranchEnterRunsSwitchCreate(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
 	opened, _ := m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})

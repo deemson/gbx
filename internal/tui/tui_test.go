@@ -124,7 +124,7 @@ func TestRunPullFailureShowsCross(t *testing.T) {
 	tp.waitForContent("✗")
 }
 
-func TestRunCheckoutSwitchesToBranch(t *testing.T) {
+func TestRunSwitchSwitchesToBranch(t *testing.T) {
 	dir := t.TempDir()
 	repo := mkRepo(t, dir, "proj")
 	repo.SetupCommitConfig()
@@ -137,14 +137,14 @@ func TestRunCheckoutSwitchesToBranch(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("proj", start)
 
-	// `c` opens the checkout prompt; type the ref; Enter runs.
-	tp.send("c")
+	// `s` opens the switch prompt; type the branch; Enter runs.
+	tp.send("s")
 	tp.send("feature")
 	tp.sendKey(keyEnter)
 	tp.waitForContent("feature")
 }
 
-func TestRunCheckoutUnknownRefShowsCross(t *testing.T) {
+func TestRunSwitchUnknownBranchShowsCross(t *testing.T) {
 	dir := t.TempDir()
 	repo := mkRepo(t, dir, "proj")
 	repo.SetupCommitConfig()
@@ -154,7 +154,7 @@ func TestRunCheckoutUnknownRefShowsCross(t *testing.T) {
 	tp := runTestProgram(t, dir)
 	tp.waitForContent("proj")
 
-	tp.send("c")
+	tp.send("s")
 	tp.send("nope-not-real")
 	tp.sendKey(keyEnter)
 	tp.waitForContent("✗")

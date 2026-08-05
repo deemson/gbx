@@ -47,8 +47,8 @@ matching the filter**:
 | `r`       | refresh status                          |
 | `f`       | fetch                                   |
 | `p`       | pull (fast-forward only)                |
-| `c`       | checkout a ref                          |
-| `b`       | create and checkout a new branch        |
+| `s`       | switch to a branch                      |
+| `b`       | create and switch to a new branch       |
 | `enter`   | open the actions menu for the repo at the cursor |
 | `ctrl+f`  | open the filter prompt                  |
 | `?`       | show all key bindings                   |

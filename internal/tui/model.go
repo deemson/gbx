@@ -27,7 +27,7 @@ type repoEntry struct {
 	repo     git.Repo
 	status   *repoStatus  // nil until loaded
 	diff     *lineChanges // nil until loaded
-	branches []string     // nil until loaded; feeds checkout autocomplete
+	branches []string     // nil until loaded; feeds switch autocomplete
 	cmd      cmdState
 	cmdErr   error // last command's error; nil on success. Drives the row one-liner.
 
@@ -48,7 +48,7 @@ type loadFailedMsg struct {
 }
 
 // uiMode is which screen has key focus. modeList is the default — letter keys
-// trigger commands directly; ?/ctrl+f/c/b open transient overlays. The three
+// trigger commands directly; ?/ctrl+f/s/b open transient overlays. The three
 // *Prompt modes own the header's top-row text input; modeHelp is the alt-screen
 // bindings overlay; modeActionMenu is the enter-key digit menu floated over the
 // cursored repo.
@@ -57,16 +57,16 @@ type uiMode int
 const (
 	modeList uiMode = iota
 	modeFilterPrompt
-	modeCheckoutPrompt
+	modeSwitchPrompt
 	modeBranchPrompt
 	modeHelp
 	modeActionMenu
 )
 
 // model is the root TUI model. List mode is the default state; letter keys
-// (r/f/p/c/b/q) dispatch directly to git actions on the filtered set, ctrl+f
+// (r/f/p/s/b/q) dispatch directly to git actions on the filtered set, ctrl+f
 // opens a transient filter prompt (committed → m.filter on Enter; reverted on
-// ctrl+f or ESC-on-empty), c/b open argument prompts. The prompt textinput is
+// ctrl+f or ESC-on-empty), s/b open argument prompts. The prompt textinput is
 // shared across the three prompt modes — its label and Enter semantics vary by
 // mode.
 type model struct {
@@ -88,7 +88,7 @@ type model struct {
 	top int
 
 	// filter is the committed filter pattern applied to the visible row set
-	// while in list mode (and while c/b prompts are open). The filter prompt's
+	// while in list mode (and while s/b prompts are open). The filter prompt's
 	// draft (prompt.Value()) takes over live while modeFilterPrompt is active,
 	// so what you'd commit is what you see.
 	filter string
@@ -96,7 +96,7 @@ type model struct {
 	// prompt is the shared bottom-row input, focused only in *Prompt modes.
 	prompt textinput.Model
 
-	// suggestions / suggIndex back the checkout-prompt branch autocomplete.
+	// suggestions / suggIndex back the switch-prompt branch autocomplete.
 	suggestions []string
 	suggIndex   int
 
@@ -167,13 +167,13 @@ func newModel(dir string) model {
 // row currently is — filter status, branch picker, or new-branch namer.
 const (
 	filterLabel    = "Filter: "
-	checkoutLabel  = "Checkout: "
+	switchLabel    = "Switch: "
 	newBranchLabel = "New Branch: "
 )
 
 // filterKeyHint is the dim "<C-f> " prefix shown left of the filter status on
 // row 1 (list and filter-prompt modes), mirroring the C-1/2/3 field chips: it
-// labels the key bound to the filter. Not shown in the c/b prompts, where row 1
+// labels the key bound to the filter. Not shown in the s/b prompts, where row 1
 // isn't the filter.
 const filterKeyHint = "<C-f> "
 
@@ -217,7 +217,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.setDiff(msg.name, msg.changes).loadDone(msg.name, nil), nil
 	case branchesLoadedMsg:
 		m = m.setBranches(msg.name, msg.branches).loadDone(msg.name, nil)
-		if m.mode == modeCheckoutPrompt || m.mode == modeBranchPrompt {
+		if m.mode == modeSwitchPrompt || m.mode == modeBranchPrompt {
 			m = m.recomputeSuggestions()
 		}
 		return m, nil
@@ -252,8 +252,8 @@ func (m model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case modeFilterPrompt:
 		nm, cmd := m.updateFilterPrompt(msg)
 		return nm.clampView(), cmd
-	case modeCheckoutPrompt:
-		nm, cmd := m.updateCheckoutPrompt(msg)
+	case modeSwitchPrompt:
+		nm, cmd := m.updateSwitchPrompt(msg)
 		return nm, cmd
 	case modeBranchPrompt:
 		nm, cmd := m.updateBranchPrompt(msg)
@@ -268,7 +268,7 @@ func (m model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // updateList routes a key in list mode (default). Letter keys dispatch git
 // actions on the filtered set; ? toggles help; ctrl+f opens the filter prompt;
-// c/b open argument prompts; q quits; ctrl+1/2/3 toggle the filter field.
+// s/b open argument prompts; q quits; ctrl+1/2/3 toggle the filter field.
 func (m model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "?":
@@ -303,8 +303,8 @@ func (m model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.runOnFiltered(func(name string, repo git.Repo) tea.Cmd {
 			return runCmd(name, "pull", repo.PullFastForward)
 		})
-	case "c":
-		return m.openCheckoutPrompt()
+	case "s":
+		return m.openSwitchPrompt()
 	case "b":
 		return m.openBranchPrompt()
 	case "ctrl+1":
@@ -364,22 +364,22 @@ func (m model) updateFilterPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	return m, cmd
 }
 
-// openCheckoutPrompt enters the c prompt: empty draft, branch suggestions
+// openSwitchPrompt enters the s prompt: empty draft, branch suggestions
 // populated from the visible repos.
-func (m model) openCheckoutPrompt() (model, tea.Cmd) {
-	m.mode = modeCheckoutPrompt
-	m = m.applyPromptLabel(checkoutLabel)
+func (m model) openSwitchPrompt() (model, tea.Cmd) {
+	m.mode = modeSwitchPrompt
+	m = m.applyPromptLabel(switchLabel)
 	m.prompt.SetValue("")
 	m = m.recomputeSuggestions()
 	return m, m.prompt.Focus()
 }
 
-// updateCheckoutPrompt handles keys with the c prompt focused. Enter runs
-// `checkout <ref>` on the filtered repos and closes; ESC clears the draft or —
+// updateSwitchPrompt handles keys with the s prompt focused. Enter runs
+// `switch <branch>` on the filtered repos and closes; ESC clears the draft or —
 // when empty — reverts and closes. Tab/shift+tab cycle branch suggestions
-// inline. There's no retrigger-close: `c` is a letter you'll want to type in a
-// ref (e.g. `claude-branch`), unlike the non-typeable F4.
-func (m model) updateCheckoutPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
+// inline. There's no retrigger-close: `s` is a letter you'll want to type in a
+// branch (e.g. `claude-branch`), unlike the non-typeable F4.
+func (m model) updateSwitchPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
 		return m.cycleSuggestion(1), nil
@@ -391,7 +391,7 @@ func (m model) updateCheckoutPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
 			return m, nil
 		}
 		nm, cmd := m.runOnFiltered(func(name string, repo git.Repo) tea.Cmd {
-			return runCmd(name, "checkout", func(ctx context.Context) error { return repo.Checkout(ctx, ref) })
+			return runCmd(name, "switch", func(ctx context.Context) error { return repo.Switch(ctx, ref) })
 		})
 		return nm.(model).closePrompt(), cmd
 	case "esc":
@@ -422,9 +422,9 @@ func (m model) openBranchPrompt() (model, tea.Cmd) {
 }
 
 // updateBranchPrompt handles keys with the b prompt focused. Enter runs
-// `checkout -b <name>` on the filtered repos and closes; ESC clears the draft
+// `switch -c <name>` on the filtered repos and closes; ESC clears the draft
 // or — when empty — reverts and closes. Tab/shift+tab cycle branch suggestions
-// inline. No retrigger-close (same reason as the c prompt: `b` is a typeable
+// inline. No retrigger-close (same reason as the s prompt: `b` is a typeable
 // letter).
 func (m model) updateBranchPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	switch msg.String() {
@@ -438,7 +438,7 @@ func (m model) updateBranchPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
 			return m, nil
 		}
 		nm, cmd := m.runOnFiltered(func(repoName string, repo git.Repo) tea.Cmd {
-			return runCmd(repoName, "checkout -b", func(ctx context.Context) error { return repo.CheckoutBranch(ctx, name) })
+			return runCmd(repoName, "switch -c", func(ctx context.Context) error { return repo.SwitchCreate(ctx, name) })
 		})
 		return nm.(model).closePrompt(), cmd
 	case "esc":
@@ -1115,7 +1115,7 @@ func (m model) footerLine() string {
 	switch m.mode {
 	case modeFilterPrompt:
 		bindings = footerFilterBindings
-	case modeCheckoutPrompt, modeBranchPrompt:
+	case modeSwitchPrompt, modeBranchPrompt:
 		bindings = footerArgBindings
 	case modeActionMenu:
 		bindings = footerActionBindings
@@ -1172,14 +1172,14 @@ func (m model) rightBlock() string {
 // headerTop is row 1: the active prompt's input while a prompt is open, or the
 // committed filter status (label + value, with dim "none" when empty) when in
 // list mode. A dim "<C-f> " hint prefixes the row whenever it shows the filter —
-// list mode and the filter prompt — but not the c/b prompts (row 1 isn't the
+// list mode and the filter prompt — but not the s/b prompts (row 1 isn't the
 // filter there).
 func (m model) headerTop() string {
 	hint := colorDim.Render(filterKeyHint)
 	switch m.mode {
 	case modeFilterPrompt:
 		return hint + m.prompt.View()
-	case modeCheckoutPrompt, modeBranchPrompt:
+	case modeSwitchPrompt, modeBranchPrompt:
 		return m.prompt.View()
 	}
 	if m.filter == "" {
@@ -1189,11 +1189,11 @@ func (m model) headerTop() string {
 }
 
 // headerBottom is row 2: the filter-field mode chips when in list or filter
-// prompt mode, or the branch suggestion row when in a c/b prompt (dim
+// prompt mode, or the branch suggestion row when in a s/b prompt (dim
 // "(no matches)" if the draft filters them all out).
 func (m model) headerBottom() string {
 	switch m.mode {
-	case modeCheckoutPrompt, modeBranchPrompt:
+	case modeSwitchPrompt, modeBranchPrompt:
 		return m.suggestionLine()
 	}
 	return m.modesLine()
@@ -1260,7 +1260,7 @@ func (m model) useShortChips() bool {
 	return m.width > 0 && m.width < m.chipsWidth(false)+lipgloss.Width(m.rightBlock())+cornerGap
 }
 
-// suggestionLine renders the c/b-prompt's autocomplete options, the highlighted
+// suggestionLine renders the s/b-prompt's autocomplete options, the highlighted
 // one (cycled by tab) reversed. Falls back to a dim "(no matches)" hint when
 // the draft narrows the set to empty, so the row stays anchored.
 func (m model) suggestionLine() string {

@@ -28,8 +28,8 @@ var listBindings = []keyBinding{
 	{"r", "refresh filtered repos"},
 	{"f", "fetch on filtered repos"},
 	{"p", "pull (fast-forward) on filtered repos"},
-	{"c", "Checkout prompt (checkout <ref>)"},
-	{"b", "New Branch prompt (checkout -b <name>)"},
+	{"s", "Switch prompt (switch <branch>)"},
+	{"b", "New Branch prompt (switch -c <name>)"},
 	{"ctrl+1", "filter field: name + branch (default)"},
 	{"ctrl+2", "filter field: name"},
 	{"ctrl+3", "filter field: branch"},
@@ -45,16 +45,16 @@ var actionMenuBindings = []keyBinding{
 	{"esc / enter / q", "close without running anything"},
 }
 
-// promptBindings document the shared behavior of the ctrl+f / c / b prompts.
-// ctrl+f while the filter prompt is open reverts; c and b lack that toggle
+// promptBindings document the shared behavior of the ctrl+f / s / b prompts.
+// ctrl+f while the filter prompt is open reverts; s and b lack that toggle
 // (their letters are typeable). ctrl+1/2/3 toggle the field in the filter
-// prompt only; in c/b they fall through to the textinput.
+// prompt only; in s/b they fall through to the textinput.
 var promptBindings = []keyBinding{
 	{"type", "edit the draft"},
-	{"enter", "apply: ctrl+f commits filter · c runs checkout · b runs checkout -b"},
+	{"enter", "apply: ctrl+f commits filter · s runs switch · b runs switch -c"},
 	{"esc", "clear the draft; if already empty, revert and close"},
 	{"ctrl+f", "(filter prompt only) revert and close, discarding the draft"},
-	{"tab", "next branch suggestion (c / b prompts)"},
+	{"tab", "next branch suggestion (s / b prompts)"},
 	{"shift+tab", "previous suggestion"},
 }
 
@@ -77,7 +77,7 @@ var footerListBindings = []keyBinding{
 	{"<r>", "refresh"},
 	{"<f>", "fetch"},
 	{"<p>", "pull"},
-	{"<c>", "checkout"},
+	{"<s>", "switch"},
 	{"<b>", "new branch"},
 	{"<?>", "help"},
 	{"<q>", "quit"},
@@ -130,7 +130,7 @@ func helpContent() string {
 	b.WriteString("\n")
 	section("actions menu (enter)", actionMenuBindings)
 	b.WriteString("\n")
-	section("prompts (ctrl+f filter · c Checkout · b New Branch)", promptBindings)
+	section("prompts (ctrl+f filter · s Switch · b New Branch)", promptBindings)
 	b.WriteString("\n")
 	section("filter syntax (space = AND)", filterSyntax)
 	return b.String()
