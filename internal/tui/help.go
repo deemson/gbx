@@ -25,6 +25,7 @@ var listBindings = []keyBinding{
 	{"ctrl+u/ctrl+d", "half-page up/down"},
 	{"enter", "open the actions menu for the cursored repo"},
 	{"ctrl+f", "filter prompt"},
+	{"ctrl+s", "search prompt (jump cursor to matches)"},
 	{"r", "refresh filtered repos"},
 	{"f", "fetch on filtered repos"},
 	{"p", "pull (fast-forward) on filtered repos"},
@@ -45,15 +46,19 @@ var actionMenuBindings = []keyBinding{
 	{"esc / enter / q", "close without running anything"},
 }
 
-// promptBindings document the shared behavior of the ctrl+f / s / b prompts.
-// ctrl+f while the filter prompt is open reverts; s and b lack that toggle
-// (their letters are typeable). ctrl+1/2/3 toggle the field in the filter
-// prompt only; in s/b they fall through to the textinput.
+// promptBindings document the shared behavior of the ctrl+f / ctrl+s / s / b
+// prompts. ctrl+f while the filter prompt is open reverts; s and b lack that
+// toggle (their letters are typeable). ctrl+1/2/3 toggle the field in the filter
+// and search prompts; in s/b they fall through to the textinput. The search
+// prompt moves the cursor instead of narrowing: enter keeps the landing spot,
+// esc / ctrl+s cancel and restore the cursor, ↓/↑ (or ctrl+n/ctrl+p) walk the
+// matches.
 var promptBindings = []keyBinding{
 	{"type", "edit the draft"},
-	{"enter", "apply: ctrl+f commits filter · s runs switch · b runs switch -c"},
-	{"esc", "clear the draft; if already empty, revert and close"},
+	{"enter", "apply: ctrl+f commits filter · ctrl+s keeps cursor · s runs switch · b runs switch -c"},
+	{"esc", "clear the draft (ctrl+s: restore cursor); if already empty, revert and close"},
 	{"ctrl+f", "(filter prompt only) revert and close, discarding the draft"},
+	{"↓/↑ ctrl+n/ctrl+p", "(search prompt) next / previous match"},
 	{"tab", "next branch suggestion (s / b prompts)"},
 	{"shift+tab", "previous suggestion"},
 }
@@ -74,6 +79,7 @@ var filterSyntax = []keyBinding{
 // Keys are angle-bracketed to mirror the header's <C-f>/<C-1> hint style.
 var footerListBindings = []keyBinding{
 	{"<C-f>", "filter"},
+	{"<C-s>", "search"},
 	{"<r>", "refresh"},
 	{"<f>", "fetch"},
 	{"<p>", "pull"},
@@ -87,6 +93,12 @@ var footerFilterBindings = []keyBinding{
 	{"<enter>", "apply"},
 	{"<esc>", "clear/close"},
 	{"<C-f>", "cancel"},
+}
+
+var footerSearchBindings = []keyBinding{
+	{"<enter>", "keep"},
+	{"<esc/C-s>", "cancel"},
+	{"<↓/↑>", "next/prev"},
 }
 
 var footerArgBindings = []keyBinding{
@@ -130,7 +142,7 @@ func helpContent() string {
 	b.WriteString("\n")
 	section("actions menu (enter)", actionMenuBindings)
 	b.WriteString("\n")
-	section("prompts (ctrl+f filter · s Switch · b New Branch)", promptBindings)
+	section("prompts (ctrl+f filter · ctrl+s search · s Switch · b New Branch)", promptBindings)
 	b.WriteString("\n")
 	section("filter syntax (space = AND)", filterSyntax)
 	return b.String()

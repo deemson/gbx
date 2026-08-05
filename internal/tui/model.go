@@ -48,15 +48,16 @@ type loadFailedMsg struct {
 }
 
 // uiMode is which screen has key focus. modeList is the default — letter keys
-// trigger commands directly; ?/ctrl+f/s/b open transient overlays. The three
-// *Prompt modes own the header's top-row text input; modeHelp is the alt-screen
-// bindings overlay; modeActionMenu is the enter-key digit menu floated over the
-// cursored repo.
+// trigger commands directly; ?/ctrl+f/ctrl+s/s/b open transient overlays. The
+// four *Prompt modes own the header's top-row text input; modeHelp is the
+// alt-screen bindings overlay; modeActionMenu is the enter-key digit menu
+// floated over the cursored repo.
 type uiMode int
 
 const (
 	modeList uiMode = iota
 	modeFilterPrompt
+	modeSearchPrompt
 	modeSwitchPrompt
 	modeBranchPrompt
 	modeHelp
@@ -66,9 +67,10 @@ const (
 // model is the root TUI model. List mode is the default state; letter keys
 // (r/f/p/s/b/q) dispatch directly to git actions on the filtered set, ctrl+f
 // opens a transient filter prompt (committed → m.filter on Enter; reverted on
-// ctrl+f or ESC-on-empty), s/b open argument prompts. The prompt textinput is
-// shared across the three prompt modes — its label and Enter semantics vary by
-// mode.
+// ctrl+f or ESC-on-empty), ctrl+s opens a transient search that moves the cursor
+// through matching rows without filtering, s/b open argument prompts. The prompt
+// textinput is shared across the four prompt modes — its label and Enter
+// semantics vary by mode.
 type model struct {
 	dir    string
 	repos  []repoEntry
@@ -86,6 +88,11 @@ type model struct {
 	// The clampView invariant keeps it in range and the cursor visible; it's 0
 	// whenever the whole matched set fits the window.
 	top int
+
+	// origCursor is the cursor position snapshotted when the search prompt opens,
+	// restored on cancel (esc / re-pressed ctrl+s) so a search that wandered can be
+	// undone. Only meaningful while modeSearchPrompt is active.
+	origCursor int
 
 	// filter is the committed filter pattern applied to the visible row set
 	// while in list mode (and while s/b prompts are open). The filter prompt's
@@ -167,6 +174,7 @@ func newModel(dir string) model {
 // row currently is — filter status, branch picker, or new-branch namer.
 const (
 	filterLabel    = "Filter: "
+	searchLabel    = "Search: "
 	switchLabel    = "Switch: "
 	newBranchLabel = "New Branch: "
 )
@@ -176,6 +184,11 @@ const (
 // labels the key bound to the filter. Not shown in the s/b prompts, where row 1
 // isn't the filter.
 const filterKeyHint = "<C-f> "
+
+// searchKeyHint is the dim "<C-s> " prefix shown left of the search input on
+// row 1 while the search prompt is open, mirroring filterKeyHint. It labels the
+// key bound to search.
+const searchKeyHint = "<C-s> "
 
 func (m model) Init() tea.Cmd {
 	return readEntriesCmd(m.dir)
@@ -252,6 +265,9 @@ func (m model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case modeFilterPrompt:
 		nm, cmd := m.updateFilterPrompt(msg)
 		return nm.clampView(), cmd
+	case modeSearchPrompt:
+		nm, cmd := m.updateSearchPrompt(msg)
+		return nm.clampView(), cmd
 	case modeSwitchPrompt:
 		nm, cmd := m.updateSwitchPrompt(msg)
 		return nm, cmd
@@ -291,6 +307,8 @@ func (m model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.openActionMenu()
 	case "ctrl+f":
 		return m.openFilterPrompt()
+	case "ctrl+s":
+		return m.openSearchPrompt()
 	case "q":
 		return m, tea.Quit
 	case "r":
@@ -362,6 +380,109 @@ func (m model) updateFilterPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.prompt, cmd = m.prompt.Update(msg)
 	return m, cmd
+}
+
+// openSearchPrompt enters the ctrl+s prompt: an empty draft, the cursor
+// snapshotted for cancel. Search never narrows the list — it walks the cursor
+// through rows matching the draft — so it's a no-op when nothing is matched.
+func (m model) openSearchPrompt() (model, tea.Cmd) {
+	if len(m.matched()) == 0 {
+		return m, nil
+	}
+	m.mode = modeSearchPrompt
+	m.origCursor = m.cursor
+	m = m.applyPromptLabel(searchLabel)
+	m.prompt.SetValue("")
+	return m, m.prompt.Focus()
+}
+
+// updateSearchPrompt handles keys with the search prompt focused. Typing (and a
+// ctrl+1/2/3 field change) re-jumps the cursor to the first matching row;
+// ↓/↑ (or ctrl+n/ctrl+p) walk to the next/previous match. Enter keeps the
+// landing spot and closes; esc or a re-pressed ctrl+s cancel — restoring the
+// cursor to where search opened — and close.
+func (m model) updateSearchPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+s", "esc":
+		m.cursor = m.origCursor
+		return m.closePrompt(), nil
+	case "enter":
+		return m.closePrompt(), nil
+	case "down", "ctrl+n":
+		return m.stepHit(1), nil
+	case "up", "ctrl+p":
+		return m.stepHit(-1), nil
+	case "ctrl+1":
+		m.field = fieldNameBranch
+		return m.jumpToFirstHit(), nil
+	case "ctrl+2":
+		m.field = fieldName
+		return m.jumpToFirstHit(), nil
+	case "ctrl+3":
+		m.field = fieldBranch
+		return m.jumpToFirstHit(), nil
+	}
+	var cmd tea.Cmd
+	m.prompt, cmd = m.prompt.Update(msg)
+	return m.jumpToFirstHit(), cmd
+}
+
+// searchHits returns the positions in the matched set whose row passes the
+// search draft, in display order. The predicate is filter's own matcher against
+// the active field, so search means "walk the rows a filter would keep." An
+// empty (or all-degenerate) draft yields no hits.
+func (m model) searchHits() []int {
+	terms := parseTerms(m.prompt.Value())
+	if len(terms) == 0 {
+		return nil
+	}
+	var hits []int
+	for i, r := range m.matched() {
+		branch := ""
+		if r.status != nil {
+			branch = r.status.branch
+		}
+		if _, ok := evalRepo(terms, r.name, branch, m.field); ok {
+			hits = append(hits, i)
+		}
+	}
+	return hits
+}
+
+// jumpToFirstHit moves the cursor to the top-most search hit, leaving it put
+// when the draft matches nothing (or is empty).
+func (m model) jumpToFirstHit() model {
+	if hits := m.searchHits(); len(hits) > 0 {
+		m.cursor = hits[0]
+	}
+	return m
+}
+
+// stepHit walks the cursor to the next (delta +1) or previous (delta -1) search
+// hit in display order, wrapping past the ends. A no-op when there are no hits.
+func (m model) stepHit(delta int) model {
+	hits := m.searchHits()
+	if len(hits) == 0 {
+		return m
+	}
+	if delta > 0 {
+		for _, h := range hits {
+			if h > m.cursor {
+				m.cursor = h
+				return m
+			}
+		}
+		m.cursor = hits[0]
+		return m
+	}
+	for _, h := range slices.Backward(hits) {
+		if h < m.cursor {
+			m.cursor = h
+			return m
+		}
+	}
+	m.cursor = hits[len(hits)-1]
+	return m
 }
 
 // openSwitchPrompt enters the s prompt: empty draft, branch suggestions
@@ -478,11 +599,15 @@ func (m model) applyPromptLabel(label string) model {
 }
 
 // promptPrefixWidth is the width of chrome rendered left of the prompt's own
-// label on row 1 — the dim "<C-f> " filter hint, shown only while the filter
-// prompt is open. Keeps the input field sized to the space the prefix leaves.
+// label on row 1 — the dim "<C-f> " / "<C-s> " key hint, shown only while the
+// filter or search prompt is open. Keeps the input field sized to the space the
+// prefix leaves.
 func (m model) promptPrefixWidth() int {
-	if m.mode == modeFilterPrompt {
+	switch m.mode {
+	case modeFilterPrompt:
 		return lipgloss.Width(filterKeyHint)
+	case modeSearchPrompt:
+		return lipgloss.Width(searchKeyHint)
 	}
 	return 0
 }
@@ -628,11 +753,23 @@ func (m model) cursorIndex() int {
 
 // effectiveFilter is the filter string used by matchedIndexes — the prompt's
 // live draft while the filter prompt is open, the committed value otherwise.
+// Search never routes through here: it moves the cursor without narrowing, so
+// while modeSearchPrompt is active this still returns the committed filter.
 func (m model) effectiveFilter() string {
 	if m.mode == modeFilterPrompt {
 		return m.prompt.Value()
 	}
 	return m.filter
+}
+
+// highlightSource is the pattern whose matches listContent underlines: the live
+// search draft while the search prompt is open, so every visible hit lights up
+// as you type; the effective filter otherwise.
+func (m model) highlightSource() string {
+	if m.mode == modeSearchPrompt {
+		return m.prompt.Value()
+	}
+	return m.effectiveFilter()
 }
 
 // runOnFiltered marks every repo currently matching the filter as running and
@@ -1115,6 +1252,8 @@ func (m model) footerLine() string {
 	switch m.mode {
 	case modeFilterPrompt:
 		bindings = footerFilterBindings
+	case modeSearchPrompt:
+		bindings = footerSearchBindings
 	case modeSwitchPrompt, modeBranchPrompt:
 		bindings = footerArgBindings
 	case modeActionMenu:
@@ -1179,6 +1318,8 @@ func (m model) headerTop() string {
 	switch m.mode {
 	case modeFilterPrompt:
 		return hint + m.prompt.View()
+	case modeSearchPrompt:
+		return colorDim.Render(searchKeyHint) + m.prompt.View()
 	case modeSwitchPrompt, modeBranchPrompt:
 		return m.prompt.View()
 	}
@@ -1340,12 +1481,30 @@ func (m model) listContent() string {
 	stateCol := lipgloss.NewStyle().Width(stateWidth)
 	diffCol := lipgloss.NewStyle().Width(diffWidth)
 
-	// Underline the filter-matched characters, scoped to the searched field:
-	// C-2 lights only the name, C-3 only the branch, C-1 (default) each column
-	// independently wherever it matched. Terms are parsed once for all rows.
-	terms := parseTerms(m.effectiveFilter())
+	// Underline the matched characters, scoped to the searched field: C-2 lights
+	// only the name, C-3 only the branch, C-1 (default) each column independently
+	// wherever it matched. The pattern is the search draft while searching (search
+	// doesn't narrow, so effectiveFilter still returns the committed filter),
+	// otherwise the effective filter. Terms are parsed once for all rows.
+	terms := parseTerms(m.highlightSource())
 	hlName := m.field != fieldBranch
 	hlBranch := m.field != fieldName
+
+	// While searching with at least one hit, dim the non-matching rows — the ones
+	// ctrl+n/↓ will skip over — so the matches the cursor walks stand out. An empty
+	// draft or a no-match query dims nothing (there's no match set to contrast).
+	var searchDim map[int]bool
+	if m.mode == modeSearchPrompt {
+		if hits := m.searchHits(); len(hits) > 0 {
+			searchDim = make(map[int]bool, len(matched))
+			for i := range matched {
+				searchDim[i] = true
+			}
+			for _, h := range hits {
+				delete(searchDim, h)
+			}
+		}
+	}
 
 	cur := m.cursorIndex()
 	rows := make([]string, len(visible))
@@ -1382,6 +1541,12 @@ func (m model) listContent() string {
 			}
 		}
 		rows[i] = lipgloss.JoinHorizontal(lipgloss.Top, cols...)
+		if searchDim[offset+i] {
+			// Drop the cells' own colors (branch hue, ✗ red, …) and re-render the
+			// row flat grey. The cursor always sits on a hit while searching, so a
+			// dimmed row is never the banded one.
+			rows[i] = colorDim.Render(ansi.Strip(rows[i]))
+		}
 		if offset+i == cur {
 			rows[i] = bandRow(rows[i], m.width)
 		}

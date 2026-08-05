@@ -20,10 +20,12 @@ var (
 	keyDown     = tea.KeyPressMsg{Code: tea.KeyDown}
 	keyQuestion = tea.KeyPressMsg{Code: '?', Text: "?"}
 	keyCtrlF    = tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl}
+	keyCtrlS    = tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
 	ctrl1       = tea.KeyPressMsg{Code: '1', Mod: tea.ModCtrl}
 	ctrl2       = tea.KeyPressMsg{Code: '2', Mod: tea.ModCtrl}
 	ctrl3       = tea.KeyPressMsg{Code: '3', Mod: tea.ModCtrl}
 	ctrlN       = tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}
+	ctrlP       = tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl}
 	ctrlU       = tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}
 	ctrlD       = tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl}
 )
