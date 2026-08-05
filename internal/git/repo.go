@@ -134,3 +134,20 @@ func (r Repo) PullFastForward(ctx context.Context) error {
 	}
 	return nil
 }
+
+func (r Repo) Switch(ctx context.Context, branch string) error {
+	res, err := r.runGit(ctx, "switch", branch)
+	if err != nil {
+		stderr := string(res.Stderr)
+		switch {
+		case res.ExitCode == 128 && strings.Contains(stderr, fmt.Sprintf("invalid reference: %s", branch)):
+			return ErrUnknownPathspec
+		case res.ExitCode == 1 && strings.Contains(stderr, "local changes to the following files would be overwritten"):
+			return ErrLocalChangesOverwritten
+		case res.ExitCode == 1 && strings.Contains(stderr, "untracked working tree files would be overwritten"):
+			return ErrUntrackedOverwritten
+		}
+		return NewUnknownRunErr(res, err)
+	}
+	return nil
+}
