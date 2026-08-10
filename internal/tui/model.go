@@ -199,7 +199,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.prompt.SetWidth(msg.Width - lipgloss.Width(m.prompt.Prompt) - m.promptPrefixWidth())
+		m.prompt.SetWidth(m.availableLeftWidth() - lipgloss.Width(m.prompt.Prompt) - m.promptPrefixWidth())
 		m.help.SetWidth(msg.Width)
 		m.help.SetHeight(msg.Height - lipgloss.Height(m.helpHeader()) - lipgloss.Height(m.helpFooter()))
 		return m.clampView(), nil
@@ -593,7 +593,7 @@ func (m model) closePrompt() model {
 func (m model) applyPromptLabel(label string) model {
 	m.prompt.Prompt = label
 	if m.width > 0 {
-		m.prompt.SetWidth(m.width - lipgloss.Width(m.prompt.Prompt) - m.promptPrefixWidth())
+		m.prompt.SetWidth(m.availableLeftWidth() - lipgloss.Width(m.prompt.Prompt) - m.promptPrefixWidth())
 	}
 	return m
 }
@@ -1171,6 +1171,18 @@ func ruleWithMarker(width int, marker string) string {
 	return colorDim.Render(strings.Repeat("─", leading)) + " " + marker + " " + colorDim.Render(strings.Repeat("─", right))
 }
 
+// availableLeftWidth is the width the header's left block actually gets: the
+// full terminal width, less the version/PID corner when it's shown (framedHeader
+// constrains the left block to this same leftWidth). The prompt input and the
+// suggestion line both size to it so neither renders wider than the column it
+// occupies and wraps into the corner, spilling onto a second header row.
+func (m model) availableLeftWidth() int {
+	if m.width > 0 && m.showCorner() {
+		return m.width - lipgloss.Width(m.rightBlock())
+	}
+	return m.width
+}
+
 // showCorner reports whether the version/PID corner block still fits beside the
 // chips at their terse width with the gap between them. Below that the corner is
 // dropped so the left block — including the elastic prompt input — gets the
@@ -1419,7 +1431,7 @@ func (m model) suggestionLine() string {
 	}
 	line := strings.Join(parts, "  ")
 	if m.width > 0 {
-		line = ansi.Truncate(line, m.width, "…")
+		line = ansi.Truncate(line, m.availableLeftWidth(), "…")
 	}
 	return line
 }

@@ -458,6 +458,29 @@ func TestSwitchShiftTabCyclesBackward(t *testing.T) {
 	require.Equal(t, "main", m.prompt.Value()) // wraps to last sorted branch
 }
 
+// A long branch set must not wrap the suggestion row into the version/PID
+// corner and spill onto a second header line: the row is cut to the width the
+// header-left actually gets (m.width less the corner), not the full width.
+func TestSuggestionLineFitsBesideCorner(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+	m.pid = 4242 // fixed so the corner width is deterministic
+	branches := make([]string, 20)
+	for i := range branches {
+		branches[i] = fmt.Sprintf("feature-branch-%02d", i)
+	}
+	m = m.setBranches("a", branches)
+	m.width = 80
+
+	opened, _ := m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
+	m = opened.(model)
+
+	avail := m.availableLeftWidth()
+	require.Less(t, avail, m.width) // the corner is shown, so there's less room than full width
+	// The joined branches overflow that room, so the line is truncated to fill —
+	// and exactly to — the available width, never wider (which would wrap).
+	require.Equal(t, avail, lipgloss.Width(m.suggestionLine()))
+}
+
 func TestSwitchSuggestionsFilteredByDraft(t *testing.T) {
 	m := newModel("x").addRepo("a", git.Repo{})
 	m = m.setBranches("a", []string{"main", "feat", "develop"})
