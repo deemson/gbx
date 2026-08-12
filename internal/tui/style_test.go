@@ -17,25 +17,14 @@ func TestBranchStyleDeterministic(t *testing.T) {
 	}
 }
 
-// The curated palette has only six slots, so collisions between arbitrary names
-// are expected — but the common main/trunk pair must read as distinct colors.
+// The full-spectrum hash spreads names across the whole hue range, so distinct
+// names should get distinct colors — the common main/trunk pair especially.
 func TestBranchStyleMainTrunkDistinct(t *testing.T) {
 	main := branchStyle("main").GetForeground()
 	trunk := branchStyle("trunk").GetForeground()
 	if main == trunk {
 		t.Fatalf("main and trunk collided on color: %v", main)
 	}
-}
-
-// branchStyle must only ever return a color from the curated palette.
-func TestBranchStyleInPalette(t *testing.T) {
-	got := branchStyle("anything").GetForeground()
-	for _, s := range branchPalette {
-		if s.GetForeground() == got {
-			return
-		}
-	}
-	t.Fatalf("color %v is not in branchPalette", got)
 }
 
 // renderHighlight must never alter the visible text — only layer styling on the
