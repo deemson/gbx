@@ -2,6 +2,8 @@ package tui
 
 import (
 	"crypto/md5"
+	"encoding/binary"
+	"math"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -22,30 +24,25 @@ var (
 )
 
 // branchStyle hashes a branch name into a full-spectrum true-color hue, so the
-// same name always reads the same color across rows — a grouping cue. The hash
-// spreads names over the whole HSL space, so distinct branches get distinct
-// colors with near-zero collisions. Unlike the status signals these RGB values
-// are fixed, not theme-relative. Ported from lazygit's author-color generator.
+// same name always reads the same color across rows — a grouping cue. Each of
+// hue, saturation and lightness is drawn from a distinct 32-bit slice of the
+// hash, so names scatter uniformly across the whole HSL space and even
+// dissimilar names rarely land close. Unlike the status signals these RGB
+// values are fixed, not theme-relative. Adapted from lazygit's author colors.
 func branchStyle(name string) lipgloss.Style {
 	hash := md5.Sum([]byte(name))
 	c := colorful.Hsl(
-		randFloat(hash[0:4])*360.0,
-		0.6+0.4*randFloat(hash[4:8]),
-		0.4+randFloat(hash[8:12])*0.2,
+		hashFrac(hash[0:4])*360.0,     // hue: full 0–360
+		0.6+0.4*hashFrac(hash[4:8]),   // saturation: 0.6–1.0
+		0.4+0.25*hashFrac(hash[8:12]), // lightness: 0.4–0.65
 	)
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(c.Hex()))
 }
 
-func randFloat(hash []byte) float64 {
-	return float64(randInt(hash, 100)) / 100
-}
-
-func randInt(hash []byte, max int) int {
-	sum := 0
-	for _, b := range hash {
-		sum = (sum + int(b)) % max
-	}
-	return sum
+// hashFrac maps four hash bytes to a fraction in [0, 1) using their full 32-bit
+// entropy — a uniform spread, unlike a byte-sum modulo which clusters.
+func hashFrac(b []byte) float64 {
+	return float64(binary.BigEndian.Uint32(b)) / (float64(math.MaxUint32) + 1)
 }
 
 // renderHighlight renders s over base, layering bold + underline on the runes
