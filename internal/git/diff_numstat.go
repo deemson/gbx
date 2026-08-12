@@ -48,11 +48,11 @@ func parseDiffNumStatPathToken(token []byte) (PathDiffNumStat, error) {
 	if len(parts) != 3 {
 		return PathDiffNumStat{}, errors.New("bad number of columns")
 	}
-	addedLines, err := strconv.Atoi(string(parts[0]))
+	addedLines, err := parseNumStatCount(parts[0])
 	if err != nil {
 		return PathDiffNumStat{}, fmt.Errorf("bad added lines: %w", err)
 	}
-	deletedLines, err := strconv.Atoi(string(parts[1]))
+	deletedLines, err := parseNumStatCount(parts[1])
 	if err != nil {
 		return PathDiffNumStat{}, fmt.Errorf("bad deleted lines: %w", err)
 	}
@@ -61,4 +61,13 @@ func parseDiffNumStatPathToken(token []byte) (PathDiffNumStat, error) {
 		AddedLines:   addedLines,
 		DeletedLines: deletedLines,
 	}, nil
+}
+
+// parseNumStatCount reads one numstat count column. git emits "-" for binary
+// files, which have no countable lines; treat that as 0.
+func parseNumStatCount(b []byte) (int, error) {
+	if bytes.Equal(b, []byte{'-'}) {
+		return 0, nil
+	}
+	return strconv.Atoi(string(b))
 }
