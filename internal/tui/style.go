@@ -3,9 +3,11 @@ package tui
 import (
 	"crypto/md5"
 	"encoding/binary"
+	"math"
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/lucasb-eyer/go-colorful"
 )
 
 // Status signals are colored from the terminal's own ANSI 16-color palette
@@ -21,29 +23,26 @@ var (
 	colorDim       = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
-// branchPalette is a curated set of the terminal's chromatic ANSI colors —
-// theme-relative (they adapt to light/dark for free). Red and bright red are
-// left out so a branch name never reads as an error; the remaining five hues
-// plus their bright variants give ten slots to spread names across.
-var branchPalette = []lipgloss.Style{
-	lipgloss.NewStyle().Foreground(lipgloss.Color("2")),  // green
-	lipgloss.NewStyle().Foreground(lipgloss.Color("3")),  // yellow
-	lipgloss.NewStyle().Foreground(lipgloss.Color("4")),  // blue
-	lipgloss.NewStyle().Foreground(lipgloss.Color("5")),  // magenta
-	lipgloss.NewStyle().Foreground(lipgloss.Color("6")),  // cyan
-	lipgloss.NewStyle().Foreground(lipgloss.Color("10")), // bright green
-	lipgloss.NewStyle().Foreground(lipgloss.Color("11")), // bright yellow
-	lipgloss.NewStyle().Foreground(lipgloss.Color("12")), // bright blue
-	lipgloss.NewStyle().Foreground(lipgloss.Color("13")), // bright magenta
-	lipgloss.NewStyle().Foreground(lipgloss.Color("14")), // bright cyan
-}
-
-// branchStyle hashes a branch name to a fixed slot in branchPalette, so the
-// same name always reads the same color across rows — a grouping cue. With only
-// a handful of distinct branches on screen, collisions are rare.
+// branchStyle hashes a branch name into a full-spectrum true-color hue, so the
+// same name always reads the same color across rows — a grouping cue. Each of
+// hue, saturation and lightness is drawn from a distinct 32-bit slice of the
+// hash, so names scatter uniformly across the whole HSL space and even
+// dissimilar names rarely land close. Unlike the status signals these RGB
+// values are fixed, not theme-relative. Adapted from lazygit's author colors.
 func branchStyle(name string) lipgloss.Style {
 	hash := md5.Sum([]byte(name))
-	return branchPalette[binary.BigEndian.Uint32(hash[0:4])%uint32(len(branchPalette))]
+	c := colorful.Hsl(
+		hashFrac(hash[0:4])*360.0,     // hue: full 0–360
+		0.6+0.4*hashFrac(hash[4:8]),   // saturation: 0.6–1.0
+		0.4+0.25*hashFrac(hash[8:12]), // lightness: 0.4–0.65
+	)
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(c.Hex()))
+}
+
+// hashFrac maps four hash bytes to a fraction in [0, 1) using their full 32-bit
+// entropy — a uniform spread, unlike a byte-sum modulo which clusters.
+func hashFrac(b []byte) float64 {
+	return float64(binary.BigEndian.Uint32(b)) / (float64(math.MaxUint32) + 1)
 }
 
 // renderHighlight renders s over base, layering bold + underline on the runes

@@ -54,6 +54,24 @@ func (s *DiffNumStatHeadSuite) TestSimple() {
 	}
 }
 
+func (s *DiffNumStatHeadSuite) TestBinaryFile() {
+	repo := gitest.Init(s.T(), s.T().TempDir())
+	repo.SetupCommitConfig()
+
+	repo.WriteFileAdd("bin.dat", "a\x00b\x00c")
+	repo.Commit("initial")
+	repo.WriteFileAdd("bin.dat", "a\x00b\x00c\x00d\x00e")
+
+	diffNumStat, err := repo.Repo().DiffNumStatHead(context.Background())
+	if s.Assert().NoError(err) {
+		s.Assert().Equal(git.DiffNumStat{
+			Paths: []git.PathDiffNumStat{
+				{Path: "bin.dat", AddedLines: 0, DeletedLines: 0},
+			},
+		}, diffNumStat)
+	}
+}
+
 func (s *DiffNumStatHeadSuite) TestNoCommits() {
 	repo := gitest.Init(s.T(), s.T().TempDir())
 	_, err := repo.Repo().DiffNumStatHead(context.Background())
