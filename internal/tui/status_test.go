@@ -36,6 +36,8 @@ func TestRepoStatusBucketsByType(t *testing.T) {
 // stripped, so the test pins glyphs and zero-hiding behavior without coupling
 // to the palette's escape codes.
 func TestRepoStatusFields(t *testing.T) {
+	bc := newBranchColors([]string{"main", "main", "dev", "feat"})
+
 	dirty := newRepoStatus(git.Status{
 		Branch:   "main",
 		Upstream: "origin/main",
@@ -48,17 +50,17 @@ func TestRepoStatusFields(t *testing.T) {
 			git.UntrackedPathStatus{},
 		},
 	})
-	require.Equal(t, "main", ansi.Strip(dirty.branchField()))
+	require.Equal(t, "main", ansi.Strip(dirty.branchField(bc)))
 	require.Equal(t, "↑2", ansi.Strip(dirty.trackingField()))
 	require.Equal(t, "~3 …2", ansi.Strip(dirty.stateField()))
 
 	cleanInSync := newRepoStatus(git.Status{Branch: "main", Upstream: "origin/main"})
-	require.Equal(t, "main", ansi.Strip(cleanInSync.branchField()))
+	require.Equal(t, "main", ansi.Strip(cleanInSync.branchField(bc)))
 	require.Equal(t, "", ansi.Strip(cleanInSync.trackingField()))
 	require.Equal(t, "", ansi.Strip(cleanInSync.stateField()))
 
 	noUpstream := newRepoStatus(git.Status{Branch: "dev"})
-	require.Equal(t, "dev", ansi.Strip(noUpstream.branchField()))
+	require.Equal(t, "dev", ansi.Strip(noUpstream.branchField(bc)))
 	require.Equal(t, "⌀", ansi.Strip(noUpstream.trackingField()))
 	require.Equal(t, "", ansi.Strip(noUpstream.stateField()))
 
@@ -68,7 +70,7 @@ func TestRepoStatusFields(t *testing.T) {
 		Behind:   1,
 		Paths:    []any{git.ConflictPathStatus{}},
 	})
-	require.Equal(t, "feat", ansi.Strip(conflict.branchField()))
+	require.Equal(t, "feat", ansi.Strip(conflict.branchField(bc)))
 	require.Equal(t, "↓1", ansi.Strip(conflict.trackingField()))
 	require.Equal(t, "‡1", ansi.Strip(conflict.stateField()))
 }

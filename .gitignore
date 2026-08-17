@@ -1,4 +1,5 @@
 /gbx
 /dist/
 /.charm-repos/
+/.grill
 .DS_Store

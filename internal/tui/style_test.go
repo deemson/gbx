@@ -1,29 +1,87 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
-// branchStyle is a grouping cue: the same name must always map to the same
-// color, and distinct names should not collapse to the same one.
-func TestBranchStyleDeterministic(t *testing.T) {
-	a := branchStyle("main").GetForeground()
-	b := branchStyle("main").GetForeground()
-	if a != b {
-		t.Fatalf("same name gave different colors: %v != %v", a, b)
+// assertSlot asserts that name resolved to branchPalette[idx]. Colors are
+// compared by foreground, the only property the palette sets.
+func assertSlot(t *testing.T, bc branchColors, name string, idx int) {
+	t.Helper()
+	got, want := bc.style(name).GetForeground(), branchPalette[idx].GetForeground()
+	if got != want {
+		t.Fatalf("%q got color %v, want branchPalette[%d] = %v", name, got, idx, want)
 	}
 }
 
-// The full-spectrum hash spreads names across the whole hue range, so distinct
-// names should get distinct colors — the common main/trunk pair especially.
-func TestBranchStyleMainTrunkDistinct(t *testing.T) {
-	main := branchStyle("main").GetForeground()
-	trunk := branchStyle("trunk").GetForeground()
-	if main == trunk {
-		t.Fatalf("main and trunk collided on color: %v", main)
+// Rank drives the color: the most-checked-out branch takes the first palette
+// slot, the next-most the second, and so on.
+func TestBranchColorsRankByFrequency(t *testing.T) {
+	bc := newBranchColors([]string{"main", "main", "main", "dev", "dev", "feat"})
+	assertSlot(t, bc, "main", 0)
+	assertSlot(t, bc, "dev", 1)
+	assertSlot(t, bc, "feat", 2)
+}
+
+// Names tied on frequency are ordered by name hash, so they get distinct colors
+// and the assignment doesn't depend on the order the repos were scanned in.
+func TestBranchColorsTiebreakStable(t *testing.T) {
+	forward := newBranchColors([]string{"main", "trunk"})
+	reversed := newBranchColors([]string{"trunk", "main"})
+	if forward.style("main").GetForeground() == forward.style("trunk").GetForeground() {
+		t.Fatal("equally common names collided on one color")
+	}
+	for _, name := range []string{"main", "trunk"} {
+		if forward.style(name).GetForeground() != reversed.style(name).GetForeground() {
+			t.Fatalf("%q changed color when the input order changed", name)
+		}
+	}
+}
+
+// Past the palette's end the ranks cycle through the bright half only, leaving
+// the plain hues to the most common branches. Counts here are all distinct so
+// the ranking is fixed by frequency alone, with no hash tiebreak involved.
+func TestBranchColorsWrapAtBrightBlue(t *testing.T) {
+	var branches []string
+	names := make([]string, 13)
+	for rank := range names {
+		names[rank] = fmt.Sprintf("branch-%d", rank)
+		// Rank 0 is the most common, so counts descend with the rank.
+		for range len(names) - rank {
+			branches = append(branches, names[rank])
+		}
+	}
+	bc := newBranchColors(branches)
+	for rank := range 10 {
+		assertSlot(t, bc, names[rank], rank)
+	}
+	assertSlot(t, bc, names[10], 5) // wraps to bright blue, not blue
+	assertSlot(t, bc, names[11], 6)
+	assertSlot(t, bc, names[12], 7)
+}
+
+// The same repo set must always produce the same colors — the grouping cue is
+// worthless if it moves between renders.
+func TestBranchColorsDeterministic(t *testing.T) {
+	branches := []string{"main", "main", "dev", "feat", "release"}
+	first, second := newBranchColors(branches), newBranchColors(branches)
+	for _, name := range branches {
+		if first.style(name).GetForeground() != second.style(name).GetForeground() {
+			t.Fatalf("%q got a different color on rebuild", name)
+		}
+	}
+}
+
+// A name the resolver never counted renders unstyled rather than borrowing some
+// other branch's color.
+func TestBranchColorsUnknownNameUnstyled(t *testing.T) {
+	bc := newBranchColors([]string{"main"})
+	if got := bc.style("never-seen"); got.Render("x") != "x" {
+		t.Fatalf("uncounted name was styled: %q", got.Render("x"))
 	}
 }
 

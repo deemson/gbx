@@ -962,6 +962,21 @@ func (m model) setCmdDone(msg cmdDoneMsg) model {
 	return m
 }
 
+// branchColors ranks the checked-out branch of every discovered repo — all of
+// them, not the matched subset, so a name keeps its color as the filter narrows.
+// Rebuilt on each render rather than cached: the ranking should describe the
+// repos as they are now, so it settles as statuses stream in during load and
+// shifts again when a switch changes the counts.
+func (m model) branchColors() branchColors {
+	var branches []string
+	for _, r := range m.repos {
+		if r.status != nil {
+			branches = append(branches, r.status.branch)
+		}
+	}
+	return newBranchColors(branches)
+}
+
 func (m model) repoByName(name string) (git.Repo, bool) {
 	for i := range m.repos {
 		if m.repos[i].name == name {
@@ -1518,12 +1533,15 @@ func (m model) listContent() string {
 		}
 	}
 
+	// Branch colors are ranked over every repo, so one resolver serves all rows.
+	bc := m.branchColors()
+
 	cur := m.cursorIndex()
 	rows := make([]string, len(visible))
 	for i, r := range visible {
 		// A column narrowed below its content is truncated without the filter
 		// match underline (it would collide with the ellipsis); only an
-		// untruncated cell is highlighted. The branch keeps its hash hue either
+		// untruncated cell is highlighted. The branch keeps its rank hue either
 		// way — re-applied after truncation, since truncating the styled string
 		// would slice into its ANSI escape.
 		name := r.name
@@ -1532,15 +1550,15 @@ func (m model) listContent() string {
 		} else if hlName {
 			name = renderHighlight(r.name, matchPositions(terms, r.name), lipgloss.NewStyle())
 		}
-		branch := branchText(r)
+		branch := branchText(r, bc)
 		switch {
 		case r.status == nil:
 			// Plain "..." placeholder; safe to slice by rune.
 			branch = truncate(branch, branchRender)
 		case lipgloss.Width(branch) > branchRender:
-			branch = branchStyle(r.status.branch).Render(truncate(r.status.branch, branchRender))
+			branch = bc.style(r.status.branch).Render(truncate(r.status.branch, branchRender))
 		case hlBranch:
-			branch = renderHighlight(r.status.branch, matchPositions(terms, r.status.branch), branchStyle(r.status.branch))
+			branch = renderHighlight(r.status.branch, matchPositions(terms, r.status.branch), bc.style(r.status.branch))
 		}
 		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(name), "  ", trackingCol.Render(trackingText(r)), "  ", branchCol.Render(branch), "  ", stateCol.Render(stateText(r)), "  ", diffCol.Render(diffText(r))}
 		if s := r.summary(); s != "" {
@@ -1572,7 +1590,7 @@ func (m model) listContent() string {
 func (m model) colWidths() (name, branch, tracking, state, diff int) {
 	for _, r := range m.repos {
 		name = max(name, lipgloss.Width(r.name))
-		branch = max(branch, lipgloss.Width(branchText(r)))
+		branch = max(branch, lipgloss.Width(branchLabel(r)))
 		tracking = max(tracking, lipgloss.Width(trackingText(r)))
 		state = max(state, lipgloss.Width(stateText(r)))
 		diff = max(diff, lipgloss.Width(diffText(r)))
@@ -1667,11 +1685,20 @@ func bandRow(line string, width int) string {
 }
 
 // branchText is the branch column for a row, or "..." until status loads.
-func branchText(r repoEntry) string {
+func branchText(r repoEntry, bc branchColors) string {
 	if r.status == nil {
 		return "..."
 	}
-	return r.status.branchField()
+	return r.status.branchField(bc)
+}
+
+// branchLabel is branchText's runes without the color — what colWidths measures,
+// since a style never changes a cell's width.
+func branchLabel(r repoEntry) string {
+	if r.status == nil {
+		return "..."
+	}
+	return r.status.branch
 }
 
 // trackingText is the upstream-relationship column (⌀ / ahead-behind arrows),

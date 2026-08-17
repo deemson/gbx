@@ -1,13 +1,14 @@
 package tui
 
 import (
+	"cmp"
 	"crypto/md5"
 	"encoding/binary"
-	"math"
+	"maps"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
-	"github.com/lucasb-eyer/go-colorful"
 )
 
 // Status signals are colored from the terminal's own ANSI 16-color palette
@@ -23,32 +24,91 @@ var (
 	colorDim       = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
-// branchStyle hashes a branch name into a full-spectrum true-color hue, so the
-// same name always reads the same color across rows — a grouping cue. Each of
-// hue, saturation and lightness is drawn from a distinct 32-bit slice of the
-// hash, so names scatter uniformly across the whole HSL space and even
-// dissimilar names rarely land close. Unlike the status signals these RGB
-// values are fixed, not theme-relative. Adapted from lazygit's author colors.
-func branchStyle(name string) lipgloss.Style {
-	hash := md5.Sum([]byte(name))
-	c := colorful.Hsl(
-		hashFrac(hash[0:4])*360.0,     // hue: full 0–360
-		0.6+0.4*hashFrac(hash[4:8]),   // saturation: 0.6–1.0
-		0.4+0.25*hashFrac(hash[8:12]), // lightness: 0.4–0.65
-	)
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(c.Hex()))
+// branchPalette is a curated set of the terminal's chromatic ANSI colors —
+// theme-relative (they adapt to light/dark for free). Red and bright red are
+// left out so a branch name never reads as an error. Order matters: the five
+// plain hues come first and go to the most common branches, their bright
+// variants after — see branchColors.
+var branchPalette = []lipgloss.Style{
+	lipgloss.NewStyle().Foreground(lipgloss.Color("4")),  // blue
+	lipgloss.NewStyle().Foreground(lipgloss.Color("2")),  // green
+	lipgloss.NewStyle().Foreground(lipgloss.Color("5")),  // magenta
+	lipgloss.NewStyle().Foreground(lipgloss.Color("6")),  // cyan
+	lipgloss.NewStyle().Foreground(lipgloss.Color("3")),  // yellow
+	lipgloss.NewStyle().Foreground(lipgloss.Color("12")), // bright blue
+	lipgloss.NewStyle().Foreground(lipgloss.Color("10")), // bright green
+	lipgloss.NewStyle().Foreground(lipgloss.Color("13")), // bright magenta
+	lipgloss.NewStyle().Foreground(lipgloss.Color("14")), // bright cyan
+	lipgloss.NewStyle().Foreground(lipgloss.Color("11")), // bright yellow
 }
 
-// hashFrac maps four hash bytes to a fraction in [0, 1) using their full 32-bit
-// entropy — a uniform spread, unlike a byte-sum modulo which clusters.
-func hashFrac(b []byte) float64 {
-	return float64(binary.BigEndian.Uint32(b)) / (float64(math.MaxUint32) + 1)
+// branchPaletteWrap is the index of bright blue — the slot the palette cycles
+// back to once the ranks run past its end. Everything below it (the plain hues)
+// stays reserved for the most common branches, so they never get taken by a
+// one-off branch just because the list is long.
+const branchPaletteWrap = 5
+
+// branchColors assigns each branch name a palette slot by *rank*: the name
+// checked out in the most repos takes branchPalette[0], the next-most [1], and
+// so on. The color is a grouping cue that doubles as a frequency cue — the
+// biggest cluster of identical rows always reads blue. A name it never counted
+// resolves to the zero Style and renders unstyled; every rendered row's branch
+// is counted, so that case means something upstream is wrong and should look
+// like it.
+type branchColors map[string]lipgloss.Style
+
+// newBranchColors ranks branches by frequency, one vote per element (pass the
+// checked-out branch of every repo, duplicates included). Names tied on count
+// are ordered by their name hash, so the assignment is stable and never depends
+// on the order the repos were scanned in.
+func newBranchColors(branches []string) branchColors {
+	counts := map[string]int{}
+	for _, b := range branches {
+		counts[b]++
+	}
+	names := slices.Collect(maps.Keys(counts))
+	slices.SortFunc(names, func(a, b string) int {
+		if c := cmp.Compare(counts[b], counts[a]); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(nameHash(a), nameHash(b)); c != 0 {
+			return c
+		}
+		return cmp.Compare(a, b)
+	})
+	bc := make(branchColors, len(names))
+	for rank, name := range names {
+		bc[name] = branchPalette[paletteIndex(rank)]
+	}
+	return bc
+}
+
+func (bc branchColors) style(name string) lipgloss.Style {
+	return bc[name]
+}
+
+// paletteIndex maps a frequency rank to a palette slot. Ranks within the
+// palette map straight through; past its end they cycle through the bright half
+// only, so with more than len(branchPalette) distinct names the colors repeat.
+func paletteIndex(rank int) int {
+	if rank < len(branchPalette) {
+		return rank
+	}
+	return branchPaletteWrap + (rank-len(branchPalette))%(len(branchPalette)-branchPaletteWrap)
+}
+
+// nameHash is the tiebreak ordering key for names of equal frequency: the full
+// 32-bit md5 prefix, so similar names still scatter rather than clumping into
+// adjacent colors the way a lexicographic tiebreak would.
+func nameHash(name string) uint32 {
+	hash := md5.Sum([]byte(name))
+	return binary.BigEndian.Uint32(hash[0:4])
 }
 
 // renderHighlight renders s over base, layering bold + underline on the runes
 // whose starting byte offset is in hl (the filter-matched characters). The
 // highlight is attribute-only, so base's foreground — default for names, the
-// hash hue for branches — shows through on matched and unmatched runes alike.
+// rank hue for branches — shows through on matched and unmatched runes alike.
 // Contiguous runes of the same state are coalesced into one styled segment to
 // keep the escape count down.
 func renderHighlight(s string, hl map[int]bool, base lipgloss.Style) string {

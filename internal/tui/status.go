@@ -69,9 +69,9 @@ func (rs repoStatus) clean() bool {
 	return rs.modified+rs.added+rs.deleted+rs.renamed+rs.untracked+rs.conflict == 0
 }
 
-// branchField is the branch name, hash-colored.
-func (rs repoStatus) branchField() string {
-	return branchStyle(rs.branch).Render(rs.branch)
+// branchField is the branch name, colored by its frequency rank.
+func (rs repoStatus) branchField(bc branchColors) string {
+	return bc.style(rs.branch).Render(rs.branch)
 }
 
 // trackingField is the branch's upstream relationship, its own column: a dim ⌀

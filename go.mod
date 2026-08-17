@@ -9,7 +9,6 @@ require (
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/fatih/color v1.19.0
-	github.com/lucasb-eyer/go-colorful v1.4.0
 	github.com/pelletier/go-toml/v2 v2.3.1
 	github.com/rs/zerolog v1.35.1
 	github.com/sahilm/fuzzy v0.1.2
@@ -29,6 +28,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
+	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.23 // indirect
