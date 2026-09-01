@@ -28,7 +28,7 @@ func drive(t *testing.T, m model, msgs ...tea.Msg) model {
 func TestRepoFoundStartsLoadingCycleAndSpins(t *testing.T) {
 	m := drive(t, newModel("x"), repoFoundMsg{name: "r", repo: git.Repo{}})
 
-	require.Equal(t, 3, m.repos[0].loading) // status + diff + branches in flight
+	require.Equal(t, 4, m.repos[0].loading) // status + diff + describe + branches in flight
 	require.True(t, m.spinning)
 	require.Equal(t, m.spinner.View(), m.gutterCell(m.repos[0])) // busy row spins
 }
@@ -36,7 +36,7 @@ func TestRepoFoundStartsLoadingCycleAndSpins(t *testing.T) {
 func TestLoadCycleCompletesToBlankGutter(t *testing.T) {
 	m := drive(t, newModel("x"),
 		repoFoundMsg{name: "r", repo: git.Repo{}},
-		statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, branchesLoadedMsg{name: "r"})
+		statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, describeLoadedMsg{name: "r"}, branchesLoadedMsg{name: "r"})
 
 	require.Equal(t, 0, m.repos[0].loading)
 	require.Empty(t, ansi.Strip(m.gutterCell(m.repos[0]))) // settled, no error → blank
@@ -45,7 +45,7 @@ func TestLoadCycleCompletesToBlankGutter(t *testing.T) {
 func TestLoadFailureSettlesToCross(t *testing.T) {
 	m := drive(t, newModel("x"),
 		repoFoundMsg{name: "r", repo: git.Repo{}},
-		statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"},
+		statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, describeLoadedMsg{name: "r"},
 		loadFailedMsg{name: "r", err: errors.New("read failed")})
 
 	require.Equal(t, 0, m.repos[0].loading)
@@ -58,16 +58,16 @@ func TestRefreshClearsPriorLoadError(t *testing.T) {
 	m := drive(t, newModel("x"),
 		repoFoundMsg{name: "r", repo: git.Repo{}},
 		loadFailedMsg{name: "r", err: errors.New("boom")},
-		statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"})
+		statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, describeLoadedMsg{name: "r"})
 	require.NotNil(t, m.repos[0].loadErr)
 
 	// `r` dispatches a fresh cycle, which clears the cycle's loadErr up front.
 	m = drive(t, m, tea.KeyPressMsg{Code: 'r', Text: "r"})
-	require.Equal(t, 3, m.repos[0].loading)
+	require.Equal(t, 4, m.repos[0].loading)
 	require.Nil(t, m.repos[0].loadErr)
 
 	// A fully successful cycle leaves the gutter blank.
-	m = drive(t, m, statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, branchesLoadedMsg{name: "r"})
+	m = drive(t, m, statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, describeLoadedMsg{name: "r"}, branchesLoadedMsg{name: "r"})
 	require.Empty(t, ansi.Strip(m.gutterCell(m.repos[0])))
 }
 
@@ -75,9 +75,9 @@ func TestRefreshClearsCommandError(t *testing.T) {
 	// A repo settled with a failed command shows ✗ + one-liner.
 	m := drive(t, newModel("x"),
 		repoFoundMsg{name: "r", repo: git.Repo{}},
-		statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, branchesLoadedMsg{name: "r"},
+		statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, describeLoadedMsg{name: "r"}, branchesLoadedMsg{name: "r"},
 		cmdDoneMsg{name: "r", err: errors.New("pull boom")},
-		statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, branchesLoadedMsg{name: "r"})
+		statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, describeLoadedMsg{name: "r"}, branchesLoadedMsg{name: "r"})
 	require.Equal(t, cmdFailed, m.repos[0].cmd)
 	require.Equal(t, "pull boom", m.repos[0].summary())
 
@@ -85,7 +85,7 @@ func TestRefreshClearsCommandError(t *testing.T) {
 	m = drive(t, m, tea.KeyPressMsg{Code: 'r', Text: "r"})
 	require.Nil(t, m.repos[0].cmdErr)
 	require.Equal(t, cmdNone, m.repos[0].cmd)
-	m = drive(t, m, statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, branchesLoadedMsg{name: "r"})
+	m = drive(t, m, statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, describeLoadedMsg{name: "r"}, branchesLoadedMsg{name: "r"})
 	require.Empty(t, ansi.Strip(m.gutterCell(m.repos[0])))
 	require.Empty(t, m.repos[0].summary())
 }
@@ -630,6 +630,48 @@ func TestDiffLoadedPopulatesRow(t *testing.T) {
 
 	require.NotNil(t, m.repos[0].diff)
 	require.Equal(t, lineChanges{added: 3, deleted: 1}, *m.repos[0].diff)
+}
+
+func TestDescribeLoadedPopulatesRow(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+
+	updated, _ := m.Update(describeLoadedMsg{name: "a", description: "v1.2.3"})
+	m = updated.(model)
+
+	require.NotNil(t, m.repos[0].describe)
+	require.Equal(t, "v1.2.3", *m.repos[0].describe)
+}
+
+func TestDescribeDisplayedImmediatelyAfterBranch(t *testing.T) {
+	m := newModel("x").addRepo("repo", git.Repo{})
+	m = m.setStatus("repo", repoStatus{branch: "main", hasUpstream: true})
+	m = m.setDescribe("repo", "v1.2.3")
+	m = m.setDiff("repo", lineChanges{})
+
+	rendered := m.listContent()
+	require.Contains(t, rendered, colorDim.Render("v1.2.3"))
+	line := ansi.Strip(rendered)
+	require.Contains(t, line, "main  v1.2.3")
+}
+
+func TestDescribeLoadingAndEmptyStates(t *testing.T) {
+	m := newModel("x").addRepo("repo", git.Repo{})
+	require.Equal(t, "...", describeText(m.repos[0]))
+
+	m = m.setDescribe("repo", "")
+	require.Empty(t, describeText(m.repos[0]))
+}
+
+func TestNarrowWidthTruncatesDescribeToItsFloor(t *testing.T) {
+	m := newModel("x").addRepo("long-repository", git.Repo{})
+	m = m.setStatus("long-repository", repoStatus{branch: "long-branch", hasUpstream: true})
+	m = m.setDescribe("long-repository", "v1.2.3-17-gabcdef")
+	m = m.setDiff("long-repository", lineChanges{})
+	m = drive(t, m, tea.WindowSizeMsg{Width: m.minRowWidth(), Height: 24})
+
+	line := ansi.Strip(m.listContent())
+	require.Contains(t, line, "v1.…")
+	require.LessOrEqual(t, ansi.StringWidth(line), m.width)
 }
 
 func TestErrorColumnAlignsAcrossDiffStates(t *testing.T) {

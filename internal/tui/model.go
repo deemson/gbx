@@ -27,11 +27,12 @@ type repoEntry struct {
 	repo     git.Repo
 	status   *repoStatus  // nil until loaded
 	diff     *lineChanges // nil until loaded
+	describe *string      // nil until loaded; empty for a repo with no commits
 	branches []string     // nil until loaded; feeds switch autocomplete
 	cmd      cmdState
 	cmdErr   error // last command's error; nil on success. Drives the row one-liner.
 
-	// loading counts the in-flight status/diff/branches reads for this repo;
+	// loading counts the in-flight status/diff/describe/branches reads for this repo;
 	// >0 means the row is busy reading and spins. loadErr is the last *load
 	// cycle's* settled error: reset to nil when a cycle is dispatched, written
 	// by any failing read, read once loading hits 0.
@@ -39,7 +40,7 @@ type repoEntry struct {
 	loadErr error
 }
 
-// loadFailedMsg signals that one of a repo's status/diff/branches reads failed.
+// loadFailedMsg signals that one of a repo's status/diff/describe/branches reads failed.
 // It decrements the in-flight counter (like the *LoadedMsg success path) and
 // records the error as the cycle's loadErr, so the row can settle to ✗.
 type loadFailedMsg struct {
@@ -222,12 +223,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.addRepo(msg.name, msg.repo).startLoad(msg.name)
 		var tick tea.Cmd
 		m, tick = m.kickSpinner()
-		return m, tea.Batch(
-			statusCmd(msg.name, msg.repo), diffCmd(msg.name, msg.repo), branchesCmd(msg.name, msg.repo), tick)
+		return m, tea.Batch(statusCmd(msg.name, msg.repo), diffCmd(msg.name, msg.repo),
+			describeCmd(msg.name, msg.repo), branchesCmd(msg.name, msg.repo), tick)
 	case statusLoadedMsg:
 		return m.setStatus(msg.name, msg.status).loadDone(msg.name, nil), nil
 	case diffLoadedMsg:
 		return m.setDiff(msg.name, msg.changes).loadDone(msg.name, nil), nil
+	case describeLoadedMsg:
+		return m.setDescribe(msg.name, msg.description).loadDone(msg.name, nil), nil
 	case branchesLoadedMsg:
 		m = m.setBranches(msg.name, msg.branches).loadDone(msg.name, nil)
 		if m.mode == modeSwitchPrompt || m.mode == modeBranchPrompt {
@@ -250,7 +253,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.startLoad(msg.name)
 			var tick tea.Cmd
 			m, tick = m.kickSpinner()
-			return m, tea.Batch(statusCmd(msg.name, repo), diffCmd(msg.name, repo), branchesCmd(msg.name, repo), tick)
+			return m, tea.Batch(statusCmd(msg.name, repo), diffCmd(msg.name, repo),
+				describeCmd(msg.name, repo), branchesCmd(msg.name, repo), tick)
 		}
 		return m, nil
 	}
@@ -795,7 +799,7 @@ func (m model) runOnFiltered(cmdFor func(name string, repo git.Repo) tea.Cmd) (t
 func (m model) startLoad(name string) model {
 	for i := range m.repos {
 		if m.repos[i].name == name {
-			m.repos[i].loading += 3
+			m.repos[i].loading += 4
 			m.repos[i].loadErr = nil
 			break
 		}
@@ -884,13 +888,14 @@ func (m model) matched() []repoEntry {
 	return out
 }
 
-// refreshFiltered re-fetches git status, line changes, and branches for every
+// refreshFiltered re-fetches git status, line changes, description, and branches for every
 // repo matching the filter.
 func (m model) refreshFiltered() (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	for _, r := range m.matched() {
 		m = m.startLoad(r.name).clearCmdError(r.name)
-		cmds = append(cmds, statusCmd(r.name, r.repo), diffCmd(r.name, r.repo), branchesCmd(r.name, r.repo))
+		cmds = append(cmds, statusCmd(r.name, r.repo), diffCmd(r.name, r.repo),
+			describeCmd(r.name, r.repo), branchesCmd(r.name, r.repo))
 	}
 	if len(cmds) == 0 {
 		return m, nil
@@ -927,6 +932,18 @@ func (m model) setDiff(name string, changes lineChanges) model {
 		if m.repos[i].name == name {
 			loaded := changes
 			m.repos[i].diff = &loaded
+			break
+		}
+	}
+	return m
+}
+
+// setDescribe attaches a loaded git description to the named repo.
+func (m model) setDescribe(name, description string) model {
+	for i := range m.repos {
+		if m.repos[i].name == name {
+			loaded := description
+			m.repos[i].describe = &loaded
 			break
 		}
 	}
@@ -1487,23 +1504,25 @@ func (m model) listContent() string {
 
 	// Column widths are pinned to the full repo list, not just the matched
 	// subset, so they stay put as the filter narrows the visible rows.
-	nameWidth, branchWidth, trackingWidth, stateWidth, diffWidth := m.colWidths()
+	nameWidth, branchWidth, describeWidth, trackingWidth, stateWidth, diffWidth := m.colWidths()
 
-	// name and branch are the only elastic columns: when the natural row is wider
-	// than the terminal they shrink (proportionally) to fit the budget left after
-	// the fixed columns, truncating their text. The fixed columns
+	// Name, branch, and describe are elastic columns: when the natural row is
+	// wider than the terminal they shrink to fit the budget left after the fixed
+	// columns, truncating their text. The fixed columns
 	// (gutter/tracking/state/diff) always render at full width.
-	nameRender, branchRender := nameWidth, branchWidth
+	nameRender, branchRender, describeRender := nameWidth, branchWidth, describeWidth
 	if m.width > 0 {
 		budget := m.width - fixedColsWidth(trackingWidth, stateWidth, diffWidth)
-		if budget < nameWidth+branchWidth {
-			nameRender, branchRender = splitNameBranch(budget, nameWidth, branchWidth)
+		if budget < nameWidth+branchWidth+describeWidth {
+			widths := splitElastic(budget, nameWidth, branchWidth, describeWidth)
+			nameRender, branchRender, describeRender = widths[0], widths[1], widths[2]
 		}
 	}
 
 	gutterCol := lipgloss.NewStyle().Width(2) // spinner / ✗ slot, 1 glyph + 1 pad
 	nameCol := lipgloss.NewStyle().Width(nameRender)
 	branchCol := lipgloss.NewStyle().Width(branchRender)
+	describeCol := lipgloss.NewStyle().Width(describeRender)
 	trackingCol := lipgloss.NewStyle().Width(trackingWidth)
 	stateCol := lipgloss.NewStyle().Width(stateWidth)
 	diffCol := lipgloss.NewStyle().Width(diffWidth)
@@ -1560,7 +1579,12 @@ func (m model) listContent() string {
 		case hlBranch:
 			branch = renderHighlight(r.status.branch, matchPositions(terms, r.status.branch), bc.style(r.status.branch))
 		}
-		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(name), "  ", trackingCol.Render(trackingText(r)), "  ", branchCol.Render(branch), "  ", stateCol.Render(stateText(r)), "  ", diffCol.Render(diffText(r))}
+		description := describeText(r)
+		if lipgloss.Width(description) > describeRender {
+			description = truncate(description, describeRender)
+		}
+		description = colorDim.Render(description)
+		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(name), "  ", trackingCol.Render(trackingText(r)), "  ", branchCol.Render(branch), "  ", describeCol.Render(description), "  ", stateCol.Render(stateText(r)), "  ", diffCol.Render(diffText(r))}
 		if s := r.summary(); s != "" {
 			prefix := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
 			if m.width > 0 {
@@ -1587,10 +1611,11 @@ func (m model) listContent() string {
 // colWidths returns the natural (widest-value) width of each data column across
 // the full repo list — pinned to all repos, not the matched subset, so columns
 // don't shift as the filter narrows the visible rows.
-func (m model) colWidths() (name, branch, tracking, state, diff int) {
+func (m model) colWidths() (name, branch, describe, tracking, state, diff int) {
 	for _, r := range m.repos {
 		name = max(name, lipgloss.Width(r.name))
 		branch = max(branch, lipgloss.Width(branchLabel(r)))
+		describe = max(describe, lipgloss.Width(describeLabel(r)))
 		tracking = max(tracking, lipgloss.Width(trackingText(r)))
 		state = max(state, lipgloss.Width(stateText(r)))
 		diff = max(diff, lipgloss.Width(diffText(r)))
@@ -1598,38 +1623,49 @@ func (m model) colWidths() (name, branch, tracking, state, diff int) {
 	return
 }
 
-// fixedColsWidth is the row width consumed by everything except the two elastic
-// columns (name, branch): the 2-wide gutter, the tracking/state/diff columns,
-// and the four 2-space gaps separating the five data columns. Subtracted from
-// the terminal width to get the name+branch budget.
+// fixedColsWidth is the row width consumed by everything except the three
+// elastic columns (name, branch, describe): the 2-wide gutter, the
+// tracking/state/diff columns, and the five 2-space gaps separating the six
+// data columns.
 func fixedColsWidth(trackingWidth, stateWidth, diffWidth int) int {
-	return 2 + trackingWidth + stateWidth + diffWidth + 8
+	return 2 + trackingWidth + stateWidth + diffWidth + 10
 }
 
-// splitNameBranch divides budget between the name and branch columns in
-// proportion to their natural widths, clamping each to its natural width and
-// handing the slack to the other. Called only when budget < nameW+branchW (they
-// don't both fit at full width); the too-narrow guard (minRowWidth) ensures
-// budget still affords each its floor before we get here.
-func splitNameBranch(budget, nameW, branchW int) (int, int) {
-	total := nameW + branchW
-	if total == 0 {
-		return 0, 0
+// splitElastic reserves every column's floor, then distributes the remaining
+// budget in proportion to each column's remaining natural-width headroom.
+func splitElastic(budget int, natural ...int) []int {
+	widths := make([]int, len(natural))
+	remaining := budget
+	for i, width := range natural {
+		widths[i] = min(colFloor, width)
+		remaining -= widths[i]
 	}
-	n := budget * nameW / total
-	b := budget - n
-	if n > nameW {
-		b += n - nameW
-		n = nameW
+	for remaining > 0 {
+		headroom := 0
+		for i, width := range natural {
+			headroom += width - widths[i]
+		}
+		if headroom == 0 {
+			break
+		}
+		for i, width := range natural {
+			room := width - widths[i]
+			if room == 0 {
+				continue
+			}
+			share := max(1, remaining*room/headroom)
+			share = min(share, room, remaining)
+			widths[i] += share
+			remaining -= share
+			if remaining == 0 {
+				break
+			}
+		}
 	}
-	if b > branchW {
-		n += b - branchW
-		b = branchW
-	}
-	return n, b
+	return widths
 }
 
-// colFloor is the minimum width an elastic column (name/branch) is truncated to
+// colFloor is the minimum width an elastic column is truncated to
 // before the row is declared unrenderable: 3 visible runes plus the ellipsis.
 const colFloor = 4
 
@@ -1638,8 +1674,8 @@ const colFloor = 4
 // since a column never needs more than it has). Below this, View yields to the
 // too-narrow screen.
 func (m model) minRowWidth() int {
-	nameW, branchW, trackingW, stateW, diffW := m.colWidths()
-	return fixedColsWidth(trackingW, stateW, diffW) + min(colFloor, nameW) + min(colFloor, branchW)
+	nameW, branchW, describeW, trackingW, stateW, diffW := m.colWidths()
+	return fixedColsWidth(trackingW, stateW, diffW) + min(colFloor, nameW) + min(colFloor, branchW) + min(colFloor, describeW)
 }
 
 // tooNarrow reports whether the terminal is too narrow to render even a minimal
@@ -1699,6 +1735,19 @@ func branchLabel(r repoEntry) string {
 		return "..."
 	}
 	return r.status.branch
+}
+
+// describeText is the dim metadata column immediately after branch. It shows a
+// placeholder until the independent describe read settles.
+func describeText(r repoEntry) string {
+	if r.describe == nil {
+		return "..."
+	}
+	return *r.describe
+}
+
+func describeLabel(r repoEntry) string {
+	return describeText(r)
 }
 
 // trackingText is the upstream-relationship column (⌀ / ahead-behind arrows),

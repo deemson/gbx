@@ -1,6 +1,7 @@
 package git
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -164,4 +165,15 @@ func (r Repo) SwitchCreate(ctx context.Context, branch string) error {
 		return NewUnknownRunErr(res, err)
 	}
 	return nil
+}
+
+func (r Repo) Describe(ctx context.Context) (string, error) {
+	res, err := r.runGit(ctx, "describe", "--always")
+	if err != nil {
+		if res.ExitCode == 128 && strings.Contains(string(res.Stderr), "Not a valid object name HEAD") {
+			return "", ErrRepositoryHasNoCommits
+		}
+		return "", NewUnknownRunErr(res, err)
+	}
+	return string(bytes.TrimSpace(res.Stdout)), nil
 }

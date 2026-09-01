@@ -152,21 +152,21 @@ func TestSearchDimsNonMatchingRows(t *testing.T) {
 	m = m.setDiff("alpha", lineChanges{}).setDiff("beta", lineChanges{})
 	m = drive(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 
-	probe := colorDim.Render("X")
-	dimOpen := probe[:strings.Index(probe, "X")] // the "enter dim" escape
+	probe := m.branchColors().style("main").Render("X")
+	branchOpen := probe[:strings.Index(probe, "X")] // the "enter branch color" escape
 
 	// Empty draft: nothing is dimmed yet.
 	opened, _ := m.Update(keyCtrlS)
 	m = opened.(model)
 	for line := range strings.SplitSeq(m.listContent(), "\n") {
-		require.NotContains(t, line, dimOpen)
+		require.Contains(t, line, branchOpen)
 	}
 
 	// "beta" matches only row 1; row 0 (alpha) greys out, row 1 keeps its colors.
 	m = send(t, m, "beta")
 	lines := strings.Split(m.listContent(), "\n")
-	require.Contains(t, lines[0], dimOpen)    // non-matching row dimmed
-	require.NotContains(t, lines[1], dimOpen) // matching row not dimmed
+	require.NotContains(t, lines[0], branchOpen) // non-matching row loses its branch color
+	require.Contains(t, lines[1], branchOpen)    // matching row keeps its branch color
 }
 
 // Chrome: list mode carries a "<C-s> search" footer hint; opening search shows
