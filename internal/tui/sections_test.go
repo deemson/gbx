@@ -17,6 +17,26 @@ func TestRelativeScanPathBecomesAbsoluteWithoutChangingLabel(t *testing.T) {
 	require.Equal(t, "./", m.sections[0].label)
 }
 
+func TestHiddenHeadingDoesNotConsumeAListRow(t *testing.T) {
+	m := newModelWithDirectories([]Directory{{Label: "./", Path: ".", HideHeading: true}})
+	m.sections[0].complete = true
+	m = m.addRepoTo(0, "api", git.Repo{})
+
+	lines := strings.Split(ansi.Strip(m.listContent()), "\n")
+	require.True(t, strings.HasPrefix(lines[0], "  api"))
+	require.Len(t, lines, 1)
+	require.Equal(t, 1, m.visualLineCount())
+	require.Equal(t, 0, m.cursorVisualLine())
+}
+
+func TestHiddenHeadingStillShowsEmptySectionStatus(t *testing.T) {
+	m := newModelWithDirectories([]Directory{{Label: "./", Path: ".", HideHeading: true}})
+	m.sections[0].complete = true
+
+	require.Equal(t, "no repos", ansi.Strip(m.listContent()))
+	require.Equal(t, 1, m.visualLineCount())
+}
+
 func sectionModel() model {
 	m := newModelWithDirectories([]Directory{
 		{Label: "./services", Path: "services"},

@@ -23,6 +23,31 @@ func TestValidateDirectoriesPreservesOccurrencesAndLabels(t *testing.T) {
 	require.Equal(t, args, []string{dirs[0].Label, dirs[1].Label})
 }
 
+func TestValidateDirectoriesHidesHeadingForSingleCurrentDirectory(t *testing.T) {
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+
+	for _, arg := range []string{".", "./", cwd} {
+		dirs, err := validateDirectories([]string{arg})
+		require.NoError(t, err)
+		require.True(t, dirs[0].HideHeading, arg)
+	}
+}
+
+func TestValidateDirectoriesKeepsHeadingForOtherOrMultipleDirectories(t *testing.T) {
+	other := t.TempDir()
+	dirs, err := validateDirectories([]string{other})
+	require.NoError(t, err)
+	require.False(t, dirs[0].HideHeading)
+
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	dirs, err = validateDirectories([]string{cwd, cwd})
+	require.NoError(t, err)
+	require.False(t, dirs[0].HideHeading)
+	require.False(t, dirs[1].HideHeading)
+}
+
 func TestValidateDirectoriesNamesInvalidArgument(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "missing")
 	_, err := validateDirectories([]string{missing})

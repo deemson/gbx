@@ -87,6 +87,10 @@ func run(version string, args []string) error {
 }
 
 func validateDirectories(args []string) ([]tui.Directory, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
 	dirs := make([]tui.Directory, len(args))
 	for i, arg := range args {
 		info, err := os.Stat(arg)
@@ -99,7 +103,15 @@ func validateDirectories(args []string) ([]tui.Directory, error) {
 		if _, err := os.ReadDir(arg); err != nil {
 			return nil, fmt.Errorf("open directory %q: %w", arg, err)
 		}
-		dirs[i] = tui.Directory{Label: arg, Path: arg}
+		expanded, err := filepath.Abs(arg)
+		if err != nil {
+			return nil, fmt.Errorf("open directory %q: %w", arg, err)
+		}
+		dirs[i] = tui.Directory{
+			Label:       arg,
+			Path:        arg,
+			HideHeading: len(args) == 1 && expanded == cwd,
+		}
 	}
 	return dirs, nil
 }

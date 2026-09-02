@@ -10,10 +10,11 @@ type config struct {
 }
 
 // Directory is one directory-list occurrence. Label is rendered exactly as
-// supplied by the caller; Path is the directory scanned on disk.
+// supplied by the caller unless HideHeading is set; Path is scanned on disk.
 type Directory struct {
-	Label string
-	Path  string
+	Label       string
+	Path        string
+	HideHeading bool
 }
 
 type Option func(*config)

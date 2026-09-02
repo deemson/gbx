@@ -44,10 +44,11 @@ type repoEntry struct {
 func (r repoEntry) ref() repoRef { return repoRef{section: r.section, name: r.name} }
 
 type directorySection struct {
-	label    string
-	path     string
-	pending  int
-	complete bool
+	label       string
+	path        string
+	hideHeading bool
+	pending     int
+	complete    bool
 }
 
 type repoRef struct {
@@ -193,7 +194,7 @@ func newModelWithDirectories(dirs []Directory) model {
 		} else {
 			path = resolved
 		}
-		sections[i] = directorySection{label: d.Label, path: path}
+		sections[i] = directorySection{label: d.Label, path: path, hideHeading: d.HideHeading}
 	}
 	return model{
 		sections:  sections,
@@ -812,8 +813,11 @@ func (m model) sectionRepoCount(section int) int {
 
 func (m model) visualLineCount() int {
 	matched := m.matched()
-	n := len(m.sections)
+	n := 0
 	for section := range m.sections {
+		if !m.sections[section].hideHeading {
+			n++
+		}
 		count := 0
 		for _, r := range matched {
 			if r.section == section {
@@ -838,7 +842,9 @@ func (m model) cursorVisualLine() int {
 	line := 0
 	seen := 0
 	for section := range m.sections {
-		line++ // heading
+		if !m.sections[section].hideHeading {
+			line++ // heading
+		}
 		count := 0
 		for _, r := range matched {
 			if r.section != section {
@@ -1783,11 +1789,13 @@ func (m model) listContent() string {
 	rows := make([]string, 0, m.visualLineCount())
 	repoRow := 0
 	for section, s := range m.sections {
-		heading := s.label
-		if m.width > 0 {
-			heading = ansi.Truncate(heading, m.width, "…")
+		if !s.hideHeading {
+			heading := s.label
+			if m.width > 0 {
+				heading = ansi.Truncate(heading, m.width, "…")
+			}
+			rows = append(rows, colorDim.Render(heading))
 		}
-		rows = append(rows, colorDim.Render(heading))
 		start := repoRow
 		for repoRow < len(matched) && matched[repoRow].section == section {
 			rows = append(rows, repoRows[repoRow])
