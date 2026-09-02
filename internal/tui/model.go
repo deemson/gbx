@@ -1583,7 +1583,11 @@ func (m model) listContent() string {
 		if lipgloss.Width(description) > describeRender {
 			description = truncate(description, describeRender)
 		}
-		description = colorDim.Render(description)
+		if offset+i == cur {
+			description = colorDark.Render(description)
+		} else {
+			description = colorDim.Render(description)
+		}
 		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(name), "  ", trackingCol.Render(trackingText(r)), "  ", branchCol.Render(branch), "  ", describeCol.Render(description), "  ", stateCol.Render(stateText(r)), "  ", diffCol.Render(diffText(r))}
 		if s := r.summary(); s != "" {
 			prefix := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
@@ -1737,7 +1741,7 @@ func branchLabel(r repoEntry) string {
 	return r.status.branch
 }
 
-// describeText is the dim metadata column immediately after branch. It shows a
+// describeText is the metadata column immediately after branch. It shows a
 // placeholder until the independent describe read settles.
 func describeText(r repoEntry) string {
 	if r.describe == nil {

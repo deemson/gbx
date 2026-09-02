@@ -643,15 +643,19 @@ func TestDescribeLoadedPopulatesRow(t *testing.T) {
 }
 
 func TestDescribeDisplayedImmediatelyAfterBranch(t *testing.T) {
-	m := newModel("x").addRepo("repo", git.Repo{})
-	m = m.setStatus("repo", repoStatus{branch: "main", hasUpstream: true})
-	m = m.setDescribe("repo", "v1.2.3")
-	m = m.setDiff("repo", lineChanges{})
+	m := newModel("x").addRepo("selected", git.Repo{}).addRepo("unselected", git.Repo{})
+	for _, name := range []string{"selected", "unselected"} {
+		m = m.setStatus(name, repoStatus{branch: "main", hasUpstream: true})
+		m = m.setDiff(name, lineChanges{})
+	}
+	m = m.setDescribe("selected", "v1.2.3-selected")
+	m = m.setDescribe("unselected", "v1.2.3-unselected")
 
 	rendered := m.listContent()
-	require.Contains(t, rendered, colorDim.Render("v1.2.3"))
-	line := ansi.Strip(rendered)
-	require.Contains(t, line, "main  v1.2.3")
+	lines := strings.Split(rendered, "\n")
+	require.Contains(t, lines[0], colorDark.Render("v1.2.3-selected"))
+	require.Contains(t, lines[1], colorDim.Render("v1.2.3-unselected"))
+	require.Contains(t, ansi.Strip(lines[0]), "main  v1.2.3-selected")
 }
 
 func TestDescribeLoadingAndEmptyStates(t *testing.T) {

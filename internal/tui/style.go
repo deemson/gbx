@@ -21,6 +21,7 @@ var (
 	colorMagenta   = lipgloss.NewStyle().Foreground(lipgloss.Color("5"))
 	colorCyan      = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	colorBrightRed = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
+	colorDark      = lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
 	colorDim       = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
