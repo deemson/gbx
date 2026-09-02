@@ -18,6 +18,7 @@ type repoStatus struct {
 	hasUpstream bool
 	ahead       int
 	behind      int
+	stashes     int
 	modified    int
 	added       int
 	deleted     int
@@ -32,6 +33,7 @@ func newRepoStatus(s git.Status) repoStatus {
 		hasUpstream: s.Upstream != "",
 		ahead:       s.Ahead,
 		behind:      s.Behind,
+		stashes:     s.Stashes,
 	}
 	for _, p := range s.Paths {
 		switch p := p.(type) {
@@ -96,10 +98,10 @@ func (rs repoStatus) sync() string {
 	return s
 }
 
-// stateField is blank when the tree is clean (success is silent), otherwise the
-// non-empty change buckets, each a colored glyph+count, in a stable order.
+// stateField contains the non-empty local-state buckets, each a colored
+// glyph+count in a stable order. A clean tree may still have stashes.
 func (rs repoStatus) stateField() string {
-	if rs.clean() {
+	if rs.clean() && rs.stashes == 0 {
 		return ""
 	}
 	var segs []string
@@ -117,6 +119,9 @@ func (rs repoStatus) stateField() string {
 	}
 	if rs.untracked > 0 {
 		segs = append(segs, colorDim.Render(fmt.Sprintf("…%d", rs.untracked)))
+	}
+	if rs.stashes > 0 {
+		segs = append(segs, colorCyan.Render(fmt.Sprintf("≡%d", rs.stashes)))
 	}
 	if rs.conflict > 0 {
 		segs = append(segs, colorBrightRed.Render(fmt.Sprintf("‡%d", rs.conflict)))

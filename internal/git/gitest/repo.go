@@ -120,6 +120,13 @@ func (r Repo) Merge(what string) {
 	}
 }
 
+func (r Repo) Stash() {
+	res, err := r.runGit("stash")
+	if err != nil {
+		require.NoError(r.t, git.NewUnknownRunErr(res, err))
+	}
+}
+
 func (r Repo) Push() {
 	res, err := r.runGit("push")
 	if err != nil {
