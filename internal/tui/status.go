@@ -125,18 +125,19 @@ func (rs repoStatus) stateField() string {
 }
 
 type statusLoadedMsg struct {
+	ref    repoRef
 	name   string
 	status repoStatus
 }
 
 // statusCmd loads one repo's status off the UI goroutine.
-func statusCmd(name string, repo git.Repo) tea.Cmd {
+func statusCmd(ref repoRef, repo git.Repo) tea.Cmd {
 	return func() tea.Msg {
 		s, err := repo.Status(context.Background())
 		if err != nil {
-			log.Error().Err(err).Str("name", name).Msg("failed to load status")
-			return loadFailedMsg{name: name, err: err}
+			log.Error().Err(err).Str("name", ref.name).Msg("failed to load status")
+			return loadFailedMsg{ref: ref, err: err}
 		}
-		return statusLoadedMsg{name: name, status: newRepoStatus(s)}
+		return statusLoadedMsg{ref: ref, status: newRepoStatus(s)}
 	}
 }

@@ -40,6 +40,19 @@ Run `gbx` in a directory that contains git repositories. It scans the immediate
 subdirectories (a flat, non-recursive scan), and lists the ones that are repos
 with their current branch, ahead/behind counts, and working-tree changes.
 
+## Open multiple directories
+
+Use `gbx open` to scan several directories in one view. Each argument is scanned
+non-recursively and gets its own dim heading, in the order and spelling supplied
+on the command line. Filtering and searching repository rows never hide those
+headings.
+
+```sh
+gbx open ./services ./tools
+```
+
+![gbx open multiple directories](assets/open.gif)
+
 From the list, single keys run a git command across **every repo currently
 matching the filter**:
 

@@ -9,6 +9,7 @@ import (
 )
 
 type branchesLoadedMsg struct {
+	ref      repoRef
 	name     string
 	branches []string
 }
@@ -16,13 +17,13 @@ type branchesLoadedMsg struct {
 // branchesCmd loads one repo's local branch names off the UI goroutine. They
 // feed switch autocomplete; a load error is logged and yields no message (the
 // repo just contributes nothing to the suggestions).
-func branchesCmd(name string, repo git.Repo) tea.Cmd {
+func branchesCmd(ref repoRef, repo git.Repo) tea.Cmd {
 	return func() tea.Msg {
 		branches, err := repo.Branches(context.Background())
 		if err != nil {
-			log.Error().Err(err).Str("name", name).Msg("failed to load branches")
-			return loadFailedMsg{name: name, err: err}
+			log.Error().Err(err).Str("name", ref.name).Msg("failed to load branches")
+			return loadFailedMsg{ref: ref, err: err}
 		}
-		return branchesLoadedMsg{name: name, branches: branches}
+		return branchesLoadedMsg{ref: ref, branches: branches}
 	}
 }

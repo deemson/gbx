@@ -158,15 +158,15 @@ func TestSearchDimsNonMatchingRows(t *testing.T) {
 	// Empty draft: nothing is dimmed yet.
 	opened, _ := m.Update(keyCtrlS)
 	m = opened.(model)
-	for line := range strings.SplitSeq(m.listContent(), "\n") {
+	for line := range strings.SplitSeq(strings.SplitN(m.listContent(), "\n", 2)[1], "\n") {
 		require.Contains(t, line, branchOpen)
 	}
 
 	// "beta" matches only row 1; row 0 (alpha) greys out, row 1 keeps its colors.
 	m = send(t, m, "beta")
 	lines := strings.Split(m.listContent(), "\n")
-	require.NotContains(t, lines[0], branchOpen) // non-matching row loses its branch color
-	require.Contains(t, lines[1], branchOpen)    // matching row keeps its branch color
+	require.NotContains(t, lines[1], branchOpen) // non-matching row loses its branch color
+	require.Contains(t, lines[2], branchOpen)    // matching row keeps its branch color
 }
 
 // Chrome: list mode carries a "<C-s> search" footer hint; opening search shows

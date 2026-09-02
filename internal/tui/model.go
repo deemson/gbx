@@ -23,6 +23,7 @@ import (
 )
 
 type repoEntry struct {
+	section  int
 	name     string
 	repo     git.Repo
 	status   *repoStatus  // nil until loaded
@@ -40,10 +41,32 @@ type repoEntry struct {
 	loadErr error
 }
 
+func (r repoEntry) ref() repoRef { return repoRef{section: r.section, name: r.name} }
+
+type directorySection struct {
+	label    string
+	path     string
+	pending  int
+	complete bool
+}
+
+type repoRef struct {
+	section int
+	name    string
+}
+
+func resolvedRef(ref repoRef, name string) repoRef {
+	if ref.name == "" {
+		ref.name = name
+	}
+	return ref
+}
+
 // loadFailedMsg signals that one of a repo's status/diff/describe/branches reads failed.
 // It decrements the in-flight counter (like the *LoadedMsg success path) and
 // records the error as the cycle's loadErr, so the row can settle to ✗.
 type loadFailedMsg struct {
+	ref  repoRef
 	name string
 	err  error
 }
@@ -73,19 +96,19 @@ const (
 // textinput is shared across the four prompt modes — its label and Enter
 // semantics vary by mode.
 type model struct {
-	dir    string
-	repos  []repoEntry
-	mode   uiMode
-	field  filterField
-	width  int
-	height int
+	sections []directorySection
+	repos    []repoEntry
+	mode     uiMode
+	field    filterField
+	width    int
+	height   int
 
 	// cursor indexes the matched (filtered, ranked) row set — the row the enter
 	// menu acts on. It rides the visible list by position (clamped to range), so
 	// narrowing the filter leaves it on whatever now sits at that slot.
 	cursor int
 
-	// top is the matched-set index of the first row shown in the scroll window.
+	// top is the visual-line index of the first row shown in the scroll window.
 	// The clampView invariant keeps it in range and the cursor visible; it's 0
 	// whenever the whole matched set fits the window.
 	top int
@@ -135,6 +158,10 @@ type model struct {
 }
 
 func newModel(dir string) model {
+	return newModelWithDirectories([]Directory{{Label: dir, Path: dir}})
+}
+
+func newModelWithDirectories(dirs []Directory) model {
 	p := textinput.New()
 	p.Prompt = filterLabel
 	// The default focused/blurred prompt style colors the label (ANSI 7), which
@@ -152,16 +179,24 @@ func newModel(dir string) model {
 	sp.Style = colorDim
 	hv := viewport.New()
 	hv.SetContent(helpContent())
-	// Resolve symlinks so dir matches git's canonicalized repo root: discovery
-	// drops entries whose toplevel != scanned path, and os.Getwd can hand back a
-	// symlinked path that would never string-match the resolved root.
-	if resolved, err := filepath.EvalSymlinks(dir); err != nil {
-		log.Error().Err(err).Str("dir", dir).Msg("failed to resolve dir symlinks")
-	} else {
-		dir = resolved
+	sections := make([]directorySection, len(dirs))
+	for i, d := range dirs {
+		path := d.Path
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			log.Error().Err(err).Str("dir", path).Msg("failed to make dir absolute")
+		} else {
+			path = absolute
+		}
+		if resolved, err := filepath.EvalSymlinks(path); err != nil {
+			log.Error().Err(err).Str("dir", path).Msg("failed to resolve dir symlinks")
+		} else {
+			path = resolved
+		}
+		sections[i] = directorySection{label: d.Label, path: path}
 	}
 	return model{
-		dir:       dir,
+		sections:  sections,
 		prompt:    p,
 		suggIndex: -1,
 		version:   "dev",
@@ -192,7 +227,11 @@ const filterKeyHint = "<C-f> "
 const searchKeyHint = "<C-s> "
 
 func (m model) Init() tea.Cmd {
-	return readEntriesCmd(m.dir)
+	cmds := make([]tea.Cmd, len(m.sections))
+	for i, section := range m.sections {
+		cmds[i] = readEntriesCmd(i, section.path)
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -214,31 +253,55 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case entriesLoadedMsg:
+		m.sections[msg.section].pending = len(msg.entries)
+		if len(msg.entries) == 0 {
+			m.sections[msg.section].complete = true
+			return m, nil
+		}
 		cmds := make([]tea.Cmd, 0, len(msg.entries))
 		for _, e := range msg.entries {
-			cmds = append(cmds, openRepoCmd(m.dir, e))
+			cmds = append(cmds, openRepoCmd(msg.section, m.sections[msg.section].path, e))
 		}
 		return m, tea.Batch(cmds...)
-	case repoFoundMsg:
-		m = m.addRepo(msg.name, msg.repo).startLoad(msg.name)
+	case repoCheckedMsg:
+		m.sections[msg.section].pending--
+		if m.sections[msg.section].pending == 0 {
+			m.sections[msg.section].complete = true
+		}
+		if !msg.found {
+			return m, nil
+		}
+		ref := repoRef{section: msg.section, name: msg.name}
+		m = m.addRepoTo(msg.section, msg.name, msg.repo).startLoadRef(ref)
 		var tick tea.Cmd
 		m, tick = m.kickSpinner()
-		return m, tea.Batch(statusCmd(msg.name, msg.repo), diffCmd(msg.name, msg.repo),
-			describeCmd(msg.name, msg.repo), branchesCmd(msg.name, msg.repo), tick)
+		return m, tea.Batch(statusCmd(ref, msg.repo), diffCmd(ref, msg.repo),
+			describeCmd(ref, msg.repo), branchesCmd(ref, msg.repo), tick)
+	case repoFoundMsg:
+		ref := repoRef{name: msg.name}
+		m = m.addRepoTo(0, msg.name, msg.repo).startLoadRef(ref)
+		var tick tea.Cmd
+		m, tick = m.kickSpinner()
+		return m, tea.Batch(statusCmd(ref, msg.repo), diffCmd(ref, msg.repo),
+			describeCmd(ref, msg.repo), branchesCmd(ref, msg.repo), tick)
 	case statusLoadedMsg:
-		return m.setStatus(msg.name, msg.status).loadDone(msg.name, nil), nil
+		ref := resolvedRef(msg.ref, msg.name)
+		return m.setStatusRef(ref, msg.status).loadDoneRef(ref, nil), nil
 	case diffLoadedMsg:
-		return m.setDiff(msg.name, msg.changes).loadDone(msg.name, nil), nil
+		ref := resolvedRef(msg.ref, msg.name)
+		return m.setDiffRef(ref, msg.changes).loadDoneRef(ref, nil), nil
 	case describeLoadedMsg:
-		return m.setDescribe(msg.name, msg.description).loadDone(msg.name, nil), nil
+		ref := resolvedRef(msg.ref, msg.name)
+		return m.setDescribeRef(ref, msg.description).loadDoneRef(ref, nil), nil
 	case branchesLoadedMsg:
-		m = m.setBranches(msg.name, msg.branches).loadDone(msg.name, nil)
+		ref := resolvedRef(msg.ref, msg.name)
+		m = m.setBranchesRef(ref, msg.branches).loadDoneRef(ref, nil)
 		if m.mode == modeSwitchPrompt || m.mode == modeBranchPrompt {
 			m = m.recomputeSuggestions()
 		}
 		return m, nil
 	case loadFailedMsg:
-		return m.loadDone(msg.name, msg.err), nil
+		return m.loadDoneRef(resolvedRef(msg.ref, msg.name), msg.err), nil
 	case spinner.TickMsg:
 		if !m.anyBusy() {
 			m.spinning = false
@@ -248,13 +311,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 	case cmdDoneMsg:
+		msg.ref = resolvedRef(msg.ref, msg.name)
 		m = m.setCmdDone(msg)
-		if repo, ok := m.repoByName(msg.name); ok {
-			m = m.startLoad(msg.name)
+		if repo, ok := m.repoByRef(msg.ref); ok {
+			m = m.startLoadRef(msg.ref)
 			var tick tea.Cmd
 			m, tick = m.kickSpinner()
-			return m, tea.Batch(statusCmd(msg.name, repo), diffCmd(msg.name, repo),
-				describeCmd(msg.name, repo), branchesCmd(msg.name, repo), tick)
+			return m, tea.Batch(statusCmd(msg.ref, repo), diffCmd(msg.ref, repo),
+				describeCmd(msg.ref, repo), branchesCmd(msg.ref, repo), tick)
 		}
 		return m, nil
 	}
@@ -296,9 +360,21 @@ func (m model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.help.GotoTop()
 		return m, nil
 	case "up", "ctrl+p":
+		if len(m.matched()) == 0 {
+			m.top--
+			return m.clampView(), nil
+		}
 		m.cursor--
 		return m.clampView(), nil
 	case "down", "ctrl+n":
+		if len(m.matched()) == 0 {
+			m.top++
+			return m.clampView(), nil
+		}
+		if m.cursorIndex() == len(m.matched())-1 && m.top+m.listHeight() < m.visualLineCount() {
+			m.top++
+			return m, nil
+		}
 		m.cursor++
 		return m.clampView(), nil
 	case "ctrl+u":
@@ -318,12 +394,12 @@ func (m model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		return m.refreshFiltered()
 	case "f":
-		return m.runOnFiltered(func(name string, repo git.Repo) tea.Cmd {
-			return runCmd(name, "fetch", repo.Fetch)
+		return m.runOnFiltered(func(ref repoRef, repo git.Repo) tea.Cmd {
+			return runCmd(ref, "fetch", repo.Fetch)
 		})
 	case "p":
-		return m.runOnFiltered(func(name string, repo git.Repo) tea.Cmd {
-			return runCmd(name, "pull", repo.PullFastForward)
+		return m.runOnFiltered(func(ref repoRef, repo git.Repo) tea.Cmd {
+			return runCmd(ref, "pull", repo.PullFastForward)
 		})
 	case "s":
 		return m.openSwitchPrompt()
@@ -515,8 +591,8 @@ func (m model) updateSwitchPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
 		if ref == "" {
 			return m, nil
 		}
-		nm, cmd := m.runOnFiltered(func(name string, repo git.Repo) tea.Cmd {
-			return runCmd(name, "switch", func(ctx context.Context) error { return repo.Switch(ctx, ref) })
+		nm, cmd := m.runOnFiltered(func(repoRef repoRef, repo git.Repo) tea.Cmd {
+			return runCmd(repoRef, "switch", func(ctx context.Context) error { return repo.Switch(ctx, ref) })
 		})
 		return nm.(model).closePrompt(), cmd
 	case "esc":
@@ -562,8 +638,8 @@ func (m model) updateBranchPrompt(msg tea.KeyPressMsg) (model, tea.Cmd) {
 		if name == "" {
 			return m, nil
 		}
-		nm, cmd := m.runOnFiltered(func(repoName string, repo git.Repo) tea.Cmd {
-			return runCmd(repoName, "switch -c", func(ctx context.Context) error { return repo.SwitchCreate(ctx, name) })
+		nm, cmd := m.runOnFiltered(func(ref repoRef, repo git.Repo) tea.Cmd {
+			return runCmd(ref, "switch -c", func(ctx context.Context) error { return repo.SwitchCreate(ctx, name) })
 		})
 		return nm.(model).closePrompt(), cmd
 	case "esc":
@@ -672,9 +748,9 @@ func (m model) fireAction(idx int) (model, tea.Cmd) {
 	r := m.matched()[ci]
 	argv, err := cmdxtmpl.Interpolate(m.appConfig.Actions[idx].Command, resolveTag)
 	if err != nil {
-		return m, func() tea.Msg { return cmdDoneMsg{name: r.name, err: err} }
+		return m, func() tea.Msg { return cmdDoneMsg{ref: r.ref(), err: err} }
 	}
-	return m, runAction(r.name, argv, r.repo.Path())
+	return m, runAction(r.ref(), argv, r.repo.Path())
 }
 
 // scrollMargin is the rows clampView keeps between the cursor and the window's
@@ -695,27 +771,92 @@ func (m model) clampView() model {
 		m.cursor = n - 1
 	}
 	h := m.listHeight()
-	if h <= 0 || n <= h {
+	total := m.visualLineCount()
+	if h <= 0 || total <= h {
 		m.top = 0
+		return m
+	}
+	if n == 0 {
+		m.top = min(max(m.top, 0), total-h)
 		return m
 	}
 	margin := scrollMargin
 	if 2*margin >= h {
 		margin = 0 // window too short to honor the margin on both sides
 	}
-	if m.cursor < m.top+margin {
-		m.top = m.cursor - margin
+	cursorLine := m.cursorVisualLine()
+	if cursorLine < m.top+margin {
+		m.top = cursorLine - margin
 	}
-	if m.cursor > m.top+h-1-margin {
-		m.top = m.cursor - h + 1 + margin
+	if cursorLine > m.top+h-1-margin {
+		m.top = cursorLine - h + 1 + margin
 	}
 	if m.top < 0 {
 		m.top = 0
 	}
-	if m.top > n-h {
-		m.top = n - h
+	if m.top > total-h {
+		m.top = total - h
 	}
 	return m
+}
+
+func (m model) sectionRepoCount(section int) int {
+	n := 0
+	for _, r := range m.repos {
+		if r.section == section {
+			n++
+		}
+	}
+	return n
+}
+
+func (m model) visualLineCount() int {
+	matched := m.matched()
+	n := len(m.sections)
+	for section := range m.sections {
+		count := 0
+		for _, r := range matched {
+			if r.section == section {
+				count++
+			}
+		}
+		if count == 0 {
+			n++
+		} else {
+			n += count
+		}
+	}
+	return n
+}
+
+func (m model) cursorVisualLine() int {
+	ci := m.cursorIndex()
+	if ci < 0 {
+		return 0
+	}
+	matched := m.matched()
+	line := 0
+	seen := 0
+	for section := range m.sections {
+		line++ // heading
+		count := 0
+		for _, r := range matched {
+			if r.section != section {
+				continue
+			}
+			if seen == ci {
+				return line + count
+			}
+			seen++
+			count++
+		}
+		if count == 0 {
+			line++ // status row
+		} else {
+			line += count
+		}
+	}
+	return 0
 }
 
 // listHeight is the scroll window's height: the terminal minus the 3-row framed
@@ -778,12 +919,12 @@ func (m model) highlightSource() string {
 
 // runOnFiltered marks every repo currently matching the filter as running and
 // fires cmdFor against each, kicking the spinner for the running rows.
-func (m model) runOnFiltered(cmdFor func(name string, repo git.Repo) tea.Cmd) (tea.Model, tea.Cmd) {
+func (m model) runOnFiltered(cmdFor func(ref repoRef, repo git.Repo) tea.Cmd) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	for _, i := range m.matchedIndexes() {
 		m.repos[i].cmd = cmdRunning
 		m.repos[i].cmdErr = nil
-		cmds = append(cmds, cmdFor(m.repos[i].name, m.repos[i].repo))
+		cmds = append(cmds, cmdFor(m.repos[i].ref(), m.repos[i].repo))
 	}
 	if len(cmds) == 0 {
 		return m, nil
@@ -796,9 +937,11 @@ func (m model) runOnFiltered(cmdFor func(name string, repo git.Repo) tea.Cmd) (t
 // startLoad opens a load cycle for the named repo: bumps the in-flight counter
 // by the three reads about to fire and clears the cycle's loadErr so a prior
 // failure doesn't linger past a fresh, successful read.
-func (m model) startLoad(name string) model {
+func (m model) startLoad(name string) model { return m.startLoadRef(repoRef{name: name}) }
+
+func (m model) startLoadRef(ref repoRef) model {
 	for i := range m.repos {
-		if m.repos[i].name == name {
+		if m.repos[i].ref() == ref {
 			m.repos[i].loading += 4
 			m.repos[i].loadErr = nil
 			break
@@ -811,8 +954,12 @@ func (m model) startLoad(name string) model {
 // in-flight counter and, on failure, records the error as the cycle's loadErr
 // (read once the counter settles to 0).
 func (m model) loadDone(name string, loadErr error) model {
+	return m.loadDoneRef(repoRef{name: name}, loadErr)
+}
+
+func (m model) loadDoneRef(ref repoRef, loadErr error) model {
 	for i := range m.repos {
-		if m.repos[i].name == name {
+		if m.repos[i].ref() == ref {
 			if m.repos[i].loading > 0 {
 				m.repos[i].loading--
 			}
@@ -829,9 +976,11 @@ func (m model) loadDone(name string, loadErr error) model {
 // `r` refresh wipes a stale ✗ and its one-liner. The post-command auto-refresh
 // uses startLoad directly and does not call this, so a just-failed command's
 // error survives its own follow-up reads.
-func (m model) clearCmdError(name string) model {
+func (m model) clearCmdError(name string) model { return m.clearCmdErrorRef(repoRef{name: name}) }
+
+func (m model) clearCmdErrorRef(ref repoRef) model {
 	for i := range m.repos {
-		if m.repos[i].name == name {
+		if m.repos[i].ref() == ref {
 			m.repos[i].cmd = cmdNone
 			m.repos[i].cmdErr = nil
 			break
@@ -867,15 +1016,27 @@ func (m model) kickSpinner() (model, tea.Cmd) {
 // effectiveFilter() picks draft vs committed; a repo whose status has not loaded
 // contributes an empty branch, which never matches.
 func (m model) matchedIndexes() []int {
-	names := make([]string, len(m.repos))
-	branches := make([]string, len(m.repos))
-	for i, r := range m.repos {
-		names[i] = r.name
-		if r.status != nil {
-			branches[i] = r.status.branch
+	var out []int
+	for section := range m.sections {
+		var indexes []int
+		var names, branches []string
+		for i, r := range m.repos {
+			if r.section != section {
+				continue
+			}
+			indexes = append(indexes, i)
+			names = append(names, r.name)
+			if r.status != nil {
+				branches = append(branches, r.status.branch)
+			} else {
+				branches = append(branches, "")
+			}
+		}
+		for _, ranked := range rankFilter(m.effectiveFilter(), names, branches, m.field) {
+			out = append(out, indexes[ranked])
 		}
 	}
-	return rankFilter(m.effectiveFilter(), names, branches, m.field)
+	return out
 }
 
 // matched returns the repos currently passing the filter, ranked best-first.
@@ -893,9 +1054,9 @@ func (m model) matched() []repoEntry {
 func (m model) refreshFiltered() (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	for _, r := range m.matched() {
-		m = m.startLoad(r.name).clearCmdError(r.name)
-		cmds = append(cmds, statusCmd(r.name, r.repo), diffCmd(r.name, r.repo),
-			describeCmd(r.name, r.repo), branchesCmd(r.name, r.repo))
+		m = m.startLoadRef(r.ref()).clearCmdErrorRef(r.ref())
+		cmds = append(cmds, statusCmd(r.ref(), r.repo), diffCmd(r.ref(), r.repo),
+			describeCmd(r.ref(), r.repo), branchesCmd(r.ref(), r.repo))
 	}
 	if len(cmds) == 0 {
 		return m, nil
@@ -907,8 +1068,15 @@ func (m model) refreshFiltered() (tea.Model, tea.Cmd) {
 
 // addRepo inserts a discovered repo and keeps the list sorted by name.
 func (m model) addRepo(name string, repo git.Repo) model {
-	m.repos = append(m.repos, repoEntry{name: name, repo: repo})
+	return m.addRepoTo(0, name, repo)
+}
+
+func (m model) addRepoTo(section int, name string, repo git.Repo) model {
+	m.repos = append(m.repos, repoEntry{section: section, name: name, repo: repo})
 	sort.Slice(m.repos, func(i, j int) bool {
+		if m.repos[i].section != m.repos[j].section {
+			return m.repos[i].section < m.repos[j].section
+		}
 		return m.repos[i].name < m.repos[j].name
 	})
 	return m
@@ -916,8 +1084,12 @@ func (m model) addRepo(name string, repo git.Repo) model {
 
 // setStatus attaches a loaded status to the named repo.
 func (m model) setStatus(name string, s repoStatus) model {
+	return m.setStatusRef(repoRef{name: name}, s)
+}
+
+func (m model) setStatusRef(ref repoRef, s repoStatus) model {
 	for i := range m.repos {
-		if m.repos[i].name == name {
+		if m.repos[i].ref() == ref {
 			loaded := s
 			m.repos[i].status = &loaded
 			break
@@ -928,8 +1100,12 @@ func (m model) setStatus(name string, s repoStatus) model {
 
 // setDiff attaches loaded line changes to the named repo.
 func (m model) setDiff(name string, changes lineChanges) model {
+	return m.setDiffRef(repoRef{name: name}, changes)
+}
+
+func (m model) setDiffRef(ref repoRef, changes lineChanges) model {
 	for i := range m.repos {
-		if m.repos[i].name == name {
+		if m.repos[i].ref() == ref {
 			loaded := changes
 			m.repos[i].diff = &loaded
 			break
@@ -940,8 +1116,12 @@ func (m model) setDiff(name string, changes lineChanges) model {
 
 // setDescribe attaches a loaded git description to the named repo.
 func (m model) setDescribe(name, description string) model {
+	return m.setDescribeRef(repoRef{name: name}, description)
+}
+
+func (m model) setDescribeRef(ref repoRef, description string) model {
 	for i := range m.repos {
-		if m.repos[i].name == name {
+		if m.repos[i].ref() == ref {
 			loaded := description
 			m.repos[i].describe = &loaded
 			break
@@ -952,8 +1132,12 @@ func (m model) setDescribe(name, description string) model {
 
 // setBranches attaches a loaded branch list to the named repo.
 func (m model) setBranches(name string, branches []string) model {
+	return m.setBranchesRef(repoRef{name: name}, branches)
+}
+
+func (m model) setBranchesRef(ref repoRef, branches []string) model {
 	for i := range m.repos {
-		if m.repos[i].name == name {
+		if m.repos[i].ref() == ref {
 			m.repos[i].branches = branches
 			break
 		}
@@ -965,7 +1149,7 @@ func (m model) setBranches(name string, branches []string) model {
 // the row failed (which surfaces the error as the row one-liner), nil marks it OK.
 func (m model) setCmdDone(msg cmdDoneMsg) model {
 	for i := range m.repos {
-		if m.repos[i].name == msg.name {
+		if m.repos[i].ref() == msg.ref {
 			if msg.err != nil {
 				m.repos[i].cmd = cmdFailed
 				m.repos[i].cmdErr = msg.err
@@ -994,9 +1178,11 @@ func (m model) branchColors() branchColors {
 	return newBranchColors(branches)
 }
 
-func (m model) repoByName(name string) (git.Repo, bool) {
+func (m model) repoByName(name string) (git.Repo, bool) { return m.repoByRef(repoRef{name: name}) }
+
+func (m model) repoByRef(ref repoRef) (git.Repo, bool) {
 	for i := range m.repos {
-		if m.repos[i].name == name {
+		if m.repos[i].ref() == ref {
 			return m.repos[i].repo, true
 		}
 	}
@@ -1165,7 +1351,7 @@ func (m model) hiddenBelow() int {
 	if h <= 0 {
 		return 0
 	}
-	if below := len(m.matched()) - (m.top + h); below > 0 {
+	if below := m.visualLineCount() - (m.top + h); below > 0 {
 		return below
 	}
 	return 0
@@ -1481,26 +1667,10 @@ func (m model) gutterCell(r repoEntry) string {
 	return ""
 }
 
-// listContent renders the repo rows (or an empty-state line) as a single block.
+// listContent renders ordered directory headings plus their repository/status
+// rows as a single scrollable block.
 func (m model) listContent() string {
-	if len(m.repos) == 0 {
-		return "no repos"
-	}
 	matched := m.matched()
-	if len(matched) == 0 {
-		return "no matches"
-	}
-
-	// Window the matched rows to the visible scroll range. m.top is kept valid by
-	// clampView; when the whole set fits (or the height is unknown) the window is
-	// the full list. The up/down "N more" markers live on the surrounding rules.
-	offset := 0
-	visible := matched
-	if h := m.listHeight(); h > 0 && len(matched) > h {
-		offset = m.top
-		end := min(offset+h, len(matched))
-		visible = matched[offset:end]
-	}
 
 	// Column widths are pinned to the full repo list, not just the matched
 	// subset, so they stay put as the filter narrows the visible rows.
@@ -1556,8 +1726,8 @@ func (m model) listContent() string {
 	bc := m.branchColors()
 
 	cur := m.cursorIndex()
-	rows := make([]string, len(visible))
-	for i, r := range visible {
+	repoRows := make([]string, len(matched))
+	for i, r := range matched {
 		// A column narrowed below its content is truncated without the filter
 		// match underline (it would collide with the ellipsis); only an
 		// untruncated cell is highlighted. The branch keeps its rank hue either
@@ -1583,7 +1753,7 @@ func (m model) listContent() string {
 		if lipgloss.Width(description) > describeRender {
 			description = truncate(description, describeRender)
 		}
-		if offset+i == cur {
+		if i == cur {
 			description = colorDark.Render(description)
 		} else {
 			description = colorDim.Render(description)
@@ -1598,16 +1768,45 @@ func (m model) listContent() string {
 				cols = append(cols, "  ", s)
 			}
 		}
-		rows[i] = lipgloss.JoinHorizontal(lipgloss.Top, cols...)
-		if searchDim[offset+i] {
+		repoRows[i] = lipgloss.JoinHorizontal(lipgloss.Top, cols...)
+		if searchDim[i] {
 			// Drop the cells' own colors (branch hue, ✗ red, …) and re-render the
 			// row flat grey. The cursor always sits on a hit while searching, so a
 			// dimmed row is never the banded one.
-			rows[i] = colorDim.Render(ansi.Strip(rows[i]))
+			repoRows[i] = colorDim.Render(ansi.Strip(repoRows[i]))
 		}
-		if offset+i == cur {
-			rows[i] = bandRow(rows[i], m.width)
+		if i == cur {
+			repoRows[i] = bandRow(repoRows[i], m.width)
 		}
+	}
+
+	rows := make([]string, 0, m.visualLineCount())
+	repoRow := 0
+	for section, s := range m.sections {
+		heading := s.label
+		if m.width > 0 {
+			heading = ansi.Truncate(heading, m.width, "…")
+		}
+		rows = append(rows, colorDim.Render(heading))
+		start := repoRow
+		for repoRow < len(matched) && matched[repoRow].section == section {
+			rows = append(rows, repoRows[repoRow])
+			repoRow++
+		}
+		if repoRow == start {
+			status := "no matches"
+			switch {
+			case !s.complete:
+				status = "loading..."
+			case m.sectionRepoCount(section) == 0:
+				status = "no repos"
+			}
+			rows = append(rows, colorDim.Render(status))
+		}
+	}
+	if h := m.listHeight(); h > 0 && len(rows) > h {
+		end := min(m.top+h, len(rows))
+		rows = rows[m.top:end]
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }

@@ -13,6 +13,7 @@ import (
 // the row's cmdState and the typed error (nil on success), then auto-refreshes
 // that repo's status, line changes, and branches. err is also logged.
 type cmdDoneMsg struct {
+	ref  repoRef
 	name string
 	err  error
 }
@@ -44,15 +45,15 @@ func (r repoEntry) summary() string {
 
 // runCmd runs one typed git method on one repo off the UI goroutine, logging and
 // carrying back the typed error via cmdDoneMsg for the row glyph and one-liner.
-func runCmd(name, label string, run func(context.Context) error) tea.Cmd {
+func runCmd(ref repoRef, label string, run func(context.Context) error) tea.Cmd {
 	return func() tea.Msg {
 		err := run(context.Background())
 		ev := log.Info()
 		if err != nil {
 			ev = log.Error().Err(err)
 		}
-		ev.Str("name", name).Str("command", label).Msg("command finished")
-		return cmdDoneMsg{name: name, err: err}
+		ev.Str("name", ref.name).Str("command", label).Msg("command finished")
+		return cmdDoneMsg{ref: ref, err: err}
 	}
 }
 
@@ -62,14 +63,14 @@ func runCmd(name, label string, run func(context.Context) error) tea.Cmd {
 // (interactive tools exit non-zero for benign reasons); only a launch failure
 // — binary missing / not executable — comes back as a row error. Either way the
 // repo is refreshed via cmdDoneMsg, since the action may have changed its state.
-func runAction(name string, argv []string, dir string) tea.Cmd {
+func runAction(ref repoRef, argv []string, dir string) tea.Cmd {
 	c := exec.Command(argv[0], argv[1:]...) //nolint:gosec
 	c.Dir = dir
 	return tea.ExecProcess(c, func(err error) tea.Msg {
 		var exitErr *exec.ExitError
 		if err != nil && !errors.As(err, &exitErr) {
-			return cmdDoneMsg{name: name, err: err}
+			return cmdDoneMsg{ref: ref, err: err}
 		}
-		return cmdDoneMsg{name: name}
+		return cmdDoneMsg{ref: ref}
 	})
 }

@@ -58,6 +58,20 @@ func TestMultipleReposAllAppear(t *testing.T) {
 	tp.waitForContent("apple", "monkey", "zebra")
 }
 
+func TestMultipleDirectoryReposAppearUnderExactHeadings(t *testing.T) {
+	services := t.TempDir()
+	tools := t.TempDir()
+	mkRepo(t, services, "orders-api")
+	mkRepo(t, tools, "release-cli")
+	m := newModelWithDirectories([]Directory{
+		{Label: "./services", Path: services},
+		{Label: "./tools", Path: tools},
+	})
+
+	tp := runTestModel(t, m)
+	tp.waitForContent("./services", "orders-api", "./tools", "release-cli")
+}
+
 func TestNonRepoDirsIgnored(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "plain-dir"), 0755))

@@ -10,6 +10,7 @@ import (
 )
 
 type describeLoadedMsg struct {
+	ref         repoRef
 	name        string
 	description string
 }
@@ -17,13 +18,13 @@ type describeLoadedMsg struct {
 // describeCmd loads one repo's git description off the UI goroutine. An
 // unborn repository has no description and settles successfully; any other
 // failure uses the shared row load-error path.
-func describeCmd(name string, repo git.Repo) tea.Cmd {
+func describeCmd(ref repoRef, repo git.Repo) tea.Cmd {
 	return func() tea.Msg {
 		description, err := repo.Describe(context.Background())
 		if err != nil && !errors.Is(err, git.ErrRepositoryHasNoCommits) {
-			log.Error().Err(err).Str("name", name).Msg("failed to describe repository")
-			return loadFailedMsg{name: name, err: err}
+			log.Error().Err(err).Str("name", ref.name).Msg("failed to describe repository")
+			return loadFailedMsg{ref: ref, err: err}
 		}
-		return describeLoadedMsg{name: name, description: description}
+		return describeLoadedMsg{ref: ref, description: description}
 	}
 }

@@ -93,5 +93,13 @@ func TestGenerateDemoFixture(t *testing.T) {
 	legacy.WriteFileAdd("backup.sh", "#!/bin/sh\n")
 	legacy.Commit("initial commit")
 
+	// Two small nested fleets for the `gbx open ./services ./tools` clip. They
+	// leave the six top-level repositories above unchanged for the overview clip.
+	for _, name := range []string{"services/orders-api", "services/users-api", "tools/release-cli", "tools/repo-linter"} {
+		r := mkRepo(name)
+		r.WriteFileAdd("README.md", "# "+filepath.Base(name)+"\n")
+		r.Commit("initial commit")
+	}
+
 	t.Logf("demo fixture written to %s (remotes in %s)", root, remotes)
 }
