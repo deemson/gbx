@@ -321,6 +321,30 @@ func TestHelpForwardsScrollKeys(t *testing.T) {
 	require.Equal(t, modeHelp, scrolled.(model).mode) // down scrolls, doesn't close
 }
 
+func TestHelpExplainsRepositoryRowIconsWithListStyles(t *testing.T) {
+	help := helpContent()
+	expected := []iconBinding{
+		{colorRed.Render("✗"), "load or command failed"},
+		{colorDim.Render("⌀"), "branch has no upstream"},
+		{colorCyan.Render("↑"), "commits ahead of upstream"},
+		{colorCyan.Render("↓"), "commits behind upstream"},
+		{colorYellow.Render("~"), "modified files"},
+		{colorGreen.Render("✚"), "added files"},
+		{colorRed.Render("✖"), "deleted files"},
+		{colorMagenta.Render("»"), "renamed files"},
+		{colorDim.Render("…"), "untracked files"},
+		{colorCyan.Render("≡"), "stashes"},
+		{colorBrightRed.Render("‡"), "conflicted files"},
+		{colorGreen.Render("+"), "added lines"},
+		{colorRed.Render("-"), "deleted lines"},
+	}
+
+	require.Contains(t, help, helpHeading.Render("repository row icons"))
+	for _, ib := range expected {
+		require.Contains(t, help, ib.icon+"  "+ib.desc)
+	}
+}
+
 // WithLogPath threads the log file path main.go owns into the model.
 func TestWithLogPathSetsField(t *testing.T) {
 	cfg := &config{}
