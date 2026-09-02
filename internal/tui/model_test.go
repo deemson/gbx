@@ -321,6 +321,21 @@ func TestHelpForwardsScrollKeys(t *testing.T) {
 	require.Equal(t, modeHelp, scrolled.(model).mode) // down scrolls, doesn't close
 }
 
+func TestQQuitsFromHelp(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+	m = drive(t, m, keyQuestion)
+
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	require.IsType(t, tea.QuitMsg{}, cmd())
+}
+
+func TestHelpFooterShowsBackAndQuitBindings(t *testing.T) {
+	m := newModel("x")
+	m.width = 80
+
+	require.Contains(t, ansi.Strip(m.helpFooter()), "? / esc: back · q: quit")
+}
+
 func TestHelpExplainsRepositoryRowIconsWithListStyles(t *testing.T) {
 	help := helpContent()
 	expected := []iconBinding{

@@ -693,14 +693,16 @@ func (m model) promptPrefixWidth() int {
 	return 0
 }
 
-// updateHelp handles keys with the help overlay open. ? or ESC closes it; every
-// other key is forwarded to the viewport for scrolling (↑/↓, j/k, PgUp/PgDn,
-// Home/End). q stays unbound — you back out of help before quitting the app.
+// updateHelp handles keys with the help overlay open. ? or ESC closes it, q
+// quits, and every other key is forwarded to the viewport for scrolling
+// (↑/↓, j/k, PgUp/PgDn, Home/End).
 func (m model) updateHelp(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	switch msg.String() {
 	case "?", "esc":
 		m.mode = modeList
 		return m, nil
+	case "q":
+		return m, tea.Quit
 	}
 	var cmd tea.Cmd
 	m.help, cmd = m.help.Update(msg)
@@ -1461,7 +1463,7 @@ func (m model) helpHeader() string {
 // scrolling.
 func (m model) helpFooter() string {
 	rule := colorDim.Render(strings.Repeat("─", m.width))
-	hint := colorDim.Render("? / esc: back")
+	hint := colorDim.Render("? / esc: back · q: quit")
 	line := hint
 	if m.help.TotalLineCount() > m.help.VisibleLineCount() {
 		pct := colorDim.Render(fmt.Sprintf("%3.f%%", m.help.ScrollPercent()*100))
