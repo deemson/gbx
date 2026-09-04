@@ -1,0 +1,83 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":enableVulnerabilityAlerts",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "Europe/Warsaw",
+  "schedule": ["before 6am on Monday"],
+  "minimumReleaseAge": "3 days",
+  "dependencyDashboard": true,
+  "automerge": false,
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": [],
+    "minimumReleaseAge": null,
+    "groupName": null,
+    "automerge": false
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track the GoReleaser binary used by goreleaser-action",
+      "managerFilePatterns": [
+        "/^\\.github\\/workflows\\/release\\.yml$/"
+      ],
+      "matchStrings": [
+        "goreleaser/goreleaser-action@\\S+\\s+with:\\s+distribution:\\s+goreleaser\\s+version:\\s+[\"']?(?<currentValue>\\d+\\.\\d+\\.\\d+)[\"']?"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "goreleaser",
+      "packageNameTemplate": "goreleaser/goreleaser",
+      "versioningTemplate": "semver-coerced"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Keep major updates separate",
+      "matchUpdateTypes": ["major"],
+      "groupName": null
+    },
+    {
+      "description": "Group non-major Go updates",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "Go dependencies"
+    },
+    {
+      "description": "Group non-major GitHub Actions updates",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "Group non-major developer and release tool updates",
+      "matchManagers": ["mise", "custom.regex"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "developer and release tools"
+    },
+    {
+      "description": "Keep the CI and mise golangci-lint versions together",
+      "matchManagers": ["github-actions"],
+      "matchDepTypes": ["uses-with"],
+      "matchPackageNames": ["golangci/golangci-lint"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "developer and release tools"
+    },
+    {
+      "description": "Keep major golangci-lint pins together",
+      "matchPackageNames": ["golangci/golangci-lint"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "golangci-lint"
+    },
+    {
+      "description": "Hold GoReleaser while .goreleaser.yaml relies on deprecated brews behavior",
+      "matchPackageNames": ["goreleaser/goreleaser"],
+      "enabled": false
+    }
+  ]
+}
