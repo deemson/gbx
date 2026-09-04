@@ -42,6 +42,7 @@ func TestRepoStatusFields(t *testing.T) {
 		Branch:   "main",
 		Upstream: "origin/main",
 		Ahead:    2,
+		Stashes:  2,
 		Paths: []any{
 			git.RegularPathStatus{StateFS: git.ModifiedPathState},
 			git.RegularPathStatus{StateFS: git.ModifiedPathState},
@@ -52,12 +53,16 @@ func TestRepoStatusFields(t *testing.T) {
 	})
 	require.Equal(t, "main", ansi.Strip(dirty.branchField(bc)))
 	require.Equal(t, "↑2", ansi.Strip(dirty.trackingField()))
-	require.Equal(t, "~3 …2", ansi.Strip(dirty.stateField()))
+	require.Equal(t, "~3 …2 ≡2", ansi.Strip(dirty.stateField()))
 
 	cleanInSync := newRepoStatus(git.Status{Branch: "main", Upstream: "origin/main"})
 	require.Equal(t, "main", ansi.Strip(cleanInSync.branchField(bc)))
 	require.Equal(t, "", ansi.Strip(cleanInSync.trackingField()))
 	require.Equal(t, "", ansi.Strip(cleanInSync.stateField()))
+
+	cleanWithStash := newRepoStatus(git.Status{Branch: "main", Stashes: 1})
+	require.True(t, cleanWithStash.clean())
+	require.Equal(t, "≡1", ansi.Strip(cleanWithStash.stateField()))
 
 	noUpstream := newRepoStatus(git.Status{Branch: "dev"})
 	require.Equal(t, "dev", ansi.Strip(noUpstream.branchField(bc)))

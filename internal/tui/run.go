@@ -12,10 +12,10 @@ func Run(opts ...Option) error {
 	for _, opt := range opts {
 		opt(cfg)
 	}
-	if cfg.dir == "" {
-		return errors.New("tui: WithDir is required")
+	if len(cfg.dirs) == 0 {
+		return errors.New("tui: WithDir or WithDirectories is required")
 	}
-	m := newModel(cfg.dir)
+	m := newModelWithDirectories(cfg.dirs)
 	if cfg.version != "" {
 		m.version = cfg.version
 	}

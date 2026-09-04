@@ -14,6 +14,11 @@ type keyBinding struct {
 	desc string
 }
 
+type iconBinding struct {
+	icon string
+	desc string
+}
+
 // listBindings document the default (list) mode: letter keys dispatch git
 // actions on the filtered set; ? toggles help; ctrl+f opens the filter prompt;
 // ctrl+1/2/3 toggle the filter field. The header is always visible and shows
@@ -70,6 +75,24 @@ var filterSyntax = []keyBinding{
 	{"^foo", "starts with foo"},
 	{"foo$", "ends with foo"},
 	{"!foo", "exclude foo"},
+}
+
+// iconBindings explain every symbolic status shown in a repository row. Each
+// sample uses the same style as its list-view counterpart.
+var iconBindings = []iconBinding{
+	{colorRed.Render("✗"), "load or command failed"},
+	{colorDim.Render("⌀"), "branch has no upstream"},
+	{colorCyan.Render("↑"), "commits ahead of upstream"},
+	{colorCyan.Render("↓"), "commits behind upstream"},
+	{colorYellow.Render("~"), "modified files"},
+	{colorGreen.Render("✚"), "added files"},
+	{colorRed.Render("✖"), "deleted files"},
+	{colorMagenta.Render("»"), "renamed files"},
+	{colorDim.Render("…"), "untracked files"},
+	{colorCyan.Render("≡"), "stashes"},
+	{colorBrightRed.Render("‡"), "conflicted files"},
+	{colorGreen.Render("+"), "added lines"},
+	{colorRed.Render("-"), "deleted lines"},
 }
 
 // footerListBindings / footerFilterBindings / footerArgBindings are the curated
@@ -139,6 +162,17 @@ func helpContent() string {
 		}
 	}
 	section("list mode", listBindings)
+	b.WriteString("\n")
+	b.WriteString(helpHeading.Render("repository row icons"))
+	b.WriteString("\n\n")
+	iconCol := 0
+	for _, ib := range iconBindings {
+		iconCol = max(iconCol, lipgloss.Width(ib.icon))
+	}
+	for _, ib := range iconBindings {
+		pad := iconCol - lipgloss.Width(ib.icon)
+		fmt.Fprintf(&b, "  %s%s  %s\n", ib.icon, strings.Repeat(" ", pad), ib.desc)
+	}
 	b.WriteString("\n")
 	section("actions menu (enter)", actionMenuBindings)
 	b.WriteString("\n")

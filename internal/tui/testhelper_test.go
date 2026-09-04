@@ -49,13 +49,17 @@ type testProgram struct {
 }
 
 func runTestProgram(t *testing.T, dir string) *testProgram {
+	return runTestModel(t, newModel(dir))
+}
+
+func runTestModel(t *testing.T, m model) *testProgram {
 	t.Helper()
 	out := &safeBuf{}
 	inR, inW := io.Pipe()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	t.Cleanup(cancel)
 
-	p := tea.NewProgram(newModel(dir),
+	p := tea.NewProgram(m,
 		tea.WithContext(ctx),
 		tea.WithInput(inR),
 		tea.WithOutput(out),

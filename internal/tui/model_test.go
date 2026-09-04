@@ -321,6 +321,45 @@ func TestHelpForwardsScrollKeys(t *testing.T) {
 	require.Equal(t, modeHelp, scrolled.(model).mode) // down scrolls, doesn't close
 }
 
+func TestQQuitsFromHelp(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+	m = drive(t, m, keyQuestion)
+
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	require.IsType(t, tea.QuitMsg{}, cmd())
+}
+
+func TestHelpFooterShowsBackAndQuitBindings(t *testing.T) {
+	m := newModel("x")
+	m.width = 80
+
+	require.Contains(t, ansi.Strip(m.helpFooter()), "? / esc: back · q: quit")
+}
+
+func TestHelpExplainsRepositoryRowIconsWithListStyles(t *testing.T) {
+	help := helpContent()
+	expected := []iconBinding{
+		{colorRed.Render("✗"), "load or command failed"},
+		{colorDim.Render("⌀"), "branch has no upstream"},
+		{colorCyan.Render("↑"), "commits ahead of upstream"},
+		{colorCyan.Render("↓"), "commits behind upstream"},
+		{colorYellow.Render("~"), "modified files"},
+		{colorGreen.Render("✚"), "added files"},
+		{colorRed.Render("✖"), "deleted files"},
+		{colorMagenta.Render("»"), "renamed files"},
+		{colorDim.Render("…"), "untracked files"},
+		{colorCyan.Render("≡"), "stashes"},
+		{colorBrightRed.Render("‡"), "conflicted files"},
+		{colorGreen.Render("+"), "added lines"},
+		{colorRed.Render("-"), "deleted lines"},
+	}
+
+	require.Contains(t, help, helpHeading.Render("repository row icons"))
+	for _, ib := range expected {
+		require.Contains(t, help, ib.icon+"  "+ib.desc)
+	}
+}
+
 // WithLogPath threads the log file path main.go owns into the model.
 func TestWithLogPathSetsField(t *testing.T) {
 	cfg := &config{}
@@ -653,9 +692,9 @@ func TestDescribeDisplayedImmediatelyAfterBranch(t *testing.T) {
 
 	rendered := m.listContent()
 	lines := strings.Split(rendered, "\n")
-	require.Contains(t, lines[0], colorDark.Render("v1.2.3-selected"))
-	require.Contains(t, lines[1], colorDim.Render("v1.2.3-unselected"))
-	require.Contains(t, ansi.Strip(lines[0]), "main  v1.2.3-selected")
+	require.Contains(t, lines[1], colorDark.Render("v1.2.3-selected"))
+	require.Contains(t, lines[2], colorDim.Render("v1.2.3-unselected"))
+	require.Contains(t, ansi.Strip(lines[1]), "main  v1.2.3-selected")
 }
 
 func TestDescribeLoadingAndEmptyStates(t *testing.T) {
@@ -673,7 +712,7 @@ func TestNarrowWidthTruncatesDescribeToItsFloor(t *testing.T) {
 	m = m.setDiff("long-repository", lineChanges{})
 	m = drive(t, m, tea.WindowSizeMsg{Width: m.minRowWidth(), Height: 24})
 
-	line := ansi.Strip(m.listContent())
+	line := strings.Split(ansi.Strip(m.listContent()), "\n")[1]
 	require.Contains(t, line, "v1.…")
 	require.LessOrEqual(t, ansi.StringWidth(line), m.width)
 }
@@ -691,9 +730,9 @@ func TestErrorColumnAlignsAcrossDiffStates(t *testing.T) {
 	m.repos[1].cmdErr = errors.New("boom-bbb")
 
 	lines := strings.Split(ansi.Strip(m.listContent()), "\n")
-	require.Len(t, lines, 2)
-	idxA := strings.Index(lines[0], "boom-aaa")
-	idxB := strings.Index(lines[1], "boom-bbb")
+	require.Len(t, lines, 3)
+	idxA := strings.Index(lines[1], "boom-aaa")
+	idxB := strings.Index(lines[2], "boom-bbb")
 	require.NotEqual(t, -1, idxA)
 	require.NotEqual(t, -1, idxB)
 	require.Equal(t, idxA, idxB) // error starts at the same column despite differing diff
@@ -730,13 +769,14 @@ func TestCursorBandsOnlyTheCursoredRow(t *testing.T) {
 	m := newModel("x").addRepo("a", git.Repo{}).addRepo("b", git.Repo{})
 
 	lines := strings.Split(m.listContent(), "\n")
-	require.Contains(t, lines[0], cursorBandSeq) // cursor starts on the first row
-	require.NotContains(t, lines[1], cursorBandSeq)
+	require.NotContains(t, lines[0], cursorBandSeq) // heading is never selectable
+	require.Contains(t, lines[1], cursorBandSeq)    // cursor starts on first repo
+	require.NotContains(t, lines[2], cursorBandSeq)
 
 	m = drive(t, m, keyDown)
 	lines = strings.Split(m.listContent(), "\n")
-	require.NotContains(t, lines[0], cursorBandSeq)
-	require.Contains(t, lines[1], cursorBandSeq) // band follows the cursor down
+	require.NotContains(t, lines[1], cursorBandSeq)
+	require.Contains(t, lines[2], cursorBandSeq) // band follows the cursor down
 }
 
 // scrollableModel builds a model of n repos sized to a 5-row scroll window
@@ -755,11 +795,11 @@ func TestCursorMovePastEdgeScrollsWindow(t *testing.T) {
 
 	m = drive(t, m, ctrlN, ctrlN) // cursor 0 -> 2, still within the top window
 	require.Equal(t, 2, m.cursor)
-	require.Equal(t, 0, m.top)
+	require.Equal(t, 1, m.top) // heading consumes the first visual line
 
 	m = drive(t, m, ctrlN) // cursor 3 crosses the bottom margin → window follows
 	require.Equal(t, 3, m.cursor)
-	require.Equal(t, 1, m.top)
+	require.Equal(t, 2, m.top)
 }
 
 func TestHalfPageJumpMovesCursorAndKeepsItVisible(t *testing.T) {
@@ -769,8 +809,8 @@ func TestHalfPageJumpMovesCursorAndKeepsItVisible(t *testing.T) {
 	require.Equal(t, 2, m.cursor) // advanced by a half-page
 	m = drive(t, m, ctrlD)
 	require.Equal(t, 4, m.cursor)
-	require.GreaterOrEqual(t, m.cursor, m.top) // cursor stays in the window
-	require.Less(t, m.cursor, m.top+m.listHeight())
+	require.GreaterOrEqual(t, m.cursorVisualLine(), m.top) // cursor stays in the window
+	require.Less(t, m.cursorVisualLine(), m.top+m.listHeight())
 }
 
 func TestHalfPageUpAtTopPinsToZero(t *testing.T) {
@@ -788,7 +828,7 @@ func TestFilterNarrowingPullsTopIntoRange(t *testing.T) {
 	for range 12 {
 		m = drive(t, m, ctrlN) // cursor to the last row, window scrolled to the end
 	}
-	require.Equal(t, 7, m.top) // 12 rows - 5-row window
+	require.Equal(t, 8, m.top) // 13 visual lines - 5-row window
 
 	opened, _ := m.Update(keyCtrlF)
 	m = send(t, opened.(model), "^r11") // narrows to a single match
@@ -803,7 +843,7 @@ func TestScrollMarkersAppearOnlyWhenContentHidden(t *testing.T) {
 
 	atTop := ansi.Strip(m.View().Content)
 	require.NotContains(t, atTop, "↑")     // nothing hidden above
-	require.Contains(t, atTop, "↓ 7 more") // 7 rows below the window
+	require.Contains(t, atTop, "↓ 8 more") // heading adds one visual row
 
 	m = drive(t, m, ctrlD, ctrlD) // cursor 4 → window scrolled into the middle
 	middle := ansi.Strip(m.View().Content)
@@ -910,9 +950,9 @@ func TestNarrowWidthTruncatesNameAndBranch(t *testing.T) {
 	m = drive(t, m, tea.WindowSizeMsg{Width: 40, Height: 24})
 
 	lines := strings.Split(ansi.Strip(m.listContent()), "\n")
-	require.Len(t, lines, 1)
-	require.LessOrEqual(t, ansi.StringWidth(lines[0]), 40) // row shrinks to fit the terminal
-	require.Contains(t, lines[0], "…")                     // an elastic column was truncated
+	require.Len(t, lines, 2)
+	require.LessOrEqual(t, ansi.StringWidth(lines[1]), 40) // row shrinks to fit the terminal
+	require.Contains(t, lines[1], "…")                     // an elastic column was truncated
 }
 
 func TestTruncatedBranchKeepsVisiblePrefix(t *testing.T) {

@@ -28,6 +28,7 @@ type Status struct {
 	Upstream string
 	Ahead    int
 	Behind   int
+	Stashes  int
 	Paths    []any
 }
 
@@ -165,6 +166,15 @@ func parseStatusMetadata(token []byte, status *Status) error {
 			return fmt.Errorf("parsing behind: %w", err)
 		}
 		status.Behind = behind
+	case "stash":
+		if len(parts) < 3 {
+			return errors.New("bad stashes")
+		}
+		stashes, err := strconv.Atoi(string(parts[2]))
+		if err != nil {
+			return fmt.Errorf("parsing stashes: %w", err)
+		}
+		status.Stashes = stashes
 	default:
 		return errors.New("unknown metadata")
 	}

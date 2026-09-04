@@ -26,6 +26,7 @@ func (lc lineChanges) String() string {
 }
 
 type diffLoadedMsg struct {
+	ref     repoRef
 	name    string
 	changes lineChanges
 }
@@ -33,18 +34,18 @@ type diffLoadedMsg struct {
 // diffCmd loads one repo's aggregate line changes vs HEAD off the UI goroutine.
 // A repo with no commits has no changes vs HEAD and reports +0 -0; any other
 // load error is logged and yields no message (the row keeps showing "...").
-func diffCmd(name string, repo git.Repo) tea.Cmd {
+func diffCmd(ref repoRef, repo git.Repo) tea.Cmd {
 	return func() tea.Msg {
 		d, err := repo.DiffNumStatHead(context.Background())
 		if err != nil && !errors.Is(err, git.ErrRepositoryHasNoCommits) {
-			log.Error().Err(err).Str("name", name).Msg("failed to load diff")
-			return loadFailedMsg{name: name, err: err}
+			log.Error().Err(err).Str("name", ref.name).Msg("failed to load diff")
+			return loadFailedMsg{ref: ref, err: err}
 		}
 		var lc lineChanges
 		for _, p := range d.Paths {
 			lc.added += p.AddedLines
 			lc.deleted += p.DeletedLines
 		}
-		return diffLoadedMsg{name: name, changes: lc}
+		return diffLoadedMsg{ref: ref, changes: lc}
 	}
 }

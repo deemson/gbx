@@ -160,3 +160,21 @@ func (s *StatusSuite) TestUpstream() {
 		}, status)
 	}
 }
+
+func (s *StatusSuite) TestStashedChanges() {
+	repo := gitest.Init(s.T(), s.T().TempDir())
+	repo.SetupCommitConfig()
+	repo.WriteFileAdd("file", "initial")
+	repo.Commit("initial")
+	repo.WriteFile("file", "modified")
+	repo.Stash()
+
+	status, err := repo.Repo().Status(context.Background())
+	if s.Assert().NoError(err) {
+		s.Assert().Equal(git.Status{
+			Commit:  repo.RevParseHead(),
+			Branch:  repo.BranchShowCurrent(),
+			Stashes: 1,
+		}, status)
+	}
+}

@@ -11,7 +11,8 @@ import (
 
 func configCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "config",
+		Use:   "config",
+		Short: "Manage configuration",
 	}
 
 	cmd.AddCommand(
@@ -23,12 +24,12 @@ func configCmd() *cobra.Command {
 
 func configWriteDefaultCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "write-default",
+		Use:   "write-default",
+		Short: "Write a default configuration with schema",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			force, _ := cmd.Flags().GetBool("force")
 			paths, err := config.WriteDefault(force)
-			var existsErr *config.FileExistsError
-			if errors.As(err, &existsErr) {
+			if _, ok := errors.AsType[*config.FileExistsError](err); ok {
 				return fmt.Errorf("%w (use --force to overwrite)", err)
 			}
 			if err != nil {

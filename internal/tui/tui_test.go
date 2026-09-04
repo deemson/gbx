@@ -58,6 +58,20 @@ func TestMultipleReposAllAppear(t *testing.T) {
 	tp.waitForContent("apple", "monkey", "zebra")
 }
 
+func TestMultipleDirectoryReposAppearUnderExactHeadings(t *testing.T) {
+	services := t.TempDir()
+	tools := t.TempDir()
+	mkRepo(t, services, "orders-api")
+	mkRepo(t, tools, "release-cli")
+	m := newModelWithDirectories([]Directory{
+		{Label: "./services", Path: services},
+		{Label: "./tools", Path: tools},
+	})
+
+	tp := runTestModel(t, m)
+	tp.waitForContent("./services", "orders-api", "./tools", "release-cli")
+}
+
 func TestNonRepoDirsIgnored(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "plain-dir"), 0755))
@@ -95,9 +109,15 @@ func TestRepoShowsCleanState(t *testing.T) {
 	repo.WriteFileAdd("file", "data")
 	repo.Commit("initial")
 	branch := repo.BranchShowCurrent()
+	ref := repoRef{name: "withcommit"}
+	m := newModel(dir).addRepo("withcommit", repo.Repo()).startLoadRef(ref)
 
-	tp := runTestProgram(t, dir)
-	tp.waitForContent("withcommit", branch) // clean tree → silent state column
+	updated, _ := m.Update(statusCmd(ref, repo.Repo())())
+	loaded := updated.(model).repos[0].status
+	require.NotNil(t, loaded)
+	require.Equal(t, branch, loaded.branch)
+	require.True(t, loaded.clean())
+	require.Empty(t, loaded.stateField())
 }
 
 func TestRepoShowsChangedCount(t *testing.T) {
