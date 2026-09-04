@@ -942,11 +942,9 @@ func (m model) runOnFiltered(cmdFor func(ref repoRef, repo git.Repo) tea.Cmd) (t
 	return m, tea.Batch(append(cmds, tick)...)
 }
 
-// startLoad opens a load cycle for the named repo: bumps the in-flight counter
-// by the three reads about to fire and clears the cycle's loadErr so a prior
-// failure doesn't linger past a fresh, successful read.
-func (m model) startLoad(name string) model { return m.startLoadRef(repoRef{name: name}) }
-
+// startLoadRef opens a load cycle for the referenced repo: bumps the in-flight
+// counter by the four reads about to fire and clears the cycle's loadErr so a
+// prior failure doesn't linger past a fresh, successful read.
 func (m model) startLoadRef(ref repoRef) model {
 	for i := range m.repos {
 		if m.repos[i].ref() == ref {
@@ -958,13 +956,9 @@ func (m model) startLoadRef(ref repoRef) model {
 	return m
 }
 
-// loadDone records one finished read for the named repo: decrements the
-// in-flight counter and, on failure, records the error as the cycle's loadErr
-// (read once the counter settles to 0).
-func (m model) loadDone(name string, loadErr error) model {
-	return m.loadDoneRef(repoRef{name: name}, loadErr)
-}
-
+// loadDoneRef records one finished read for the referenced repo: decrements
+// the in-flight counter and, on failure, records the error as the cycle's
+// loadErr (read once the counter settles to 0).
 func (m model) loadDoneRef(ref repoRef, loadErr error) model {
 	for i := range m.repos {
 		if m.repos[i].ref() == ref {
@@ -980,12 +974,10 @@ func (m model) loadDoneRef(ref repoRef, loadErr error) model {
 	return m
 }
 
-// clearCmdError forgets the named repo's last command outcome, so an explicit
-// `r` refresh wipes a stale ✗ and its one-liner. The post-command auto-refresh
-// uses startLoad directly and does not call this, so a just-failed command's
-// error survives its own follow-up reads.
-func (m model) clearCmdError(name string) model { return m.clearCmdErrorRef(repoRef{name: name}) }
-
+// clearCmdErrorRef forgets the referenced repo's last command outcome, so an
+// explicit `r` refresh wipes a stale ✗ and its one-liner. The post-command
+// auto-refresh uses startLoadRef directly and does not call this, so a
+// just-failed command's error survives its own follow-up reads.
 func (m model) clearCmdErrorRef(ref repoRef) model {
 	for i := range m.repos {
 		if m.repos[i].ref() == ref {
@@ -1185,8 +1177,6 @@ func (m model) branchColors() branchColors {
 	}
 	return newBranchColors(branches)
 }
-
-func (m model) repoByName(name string) (git.Repo, bool) { return m.repoByRef(repoRef{name: name}) }
 
 func (m model) repoByRef(ref repoRef) (git.Repo, bool) {
 	for i := range m.repos {

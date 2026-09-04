@@ -109,9 +109,15 @@ func TestRepoShowsCleanState(t *testing.T) {
 	repo.WriteFileAdd("file", "data")
 	repo.Commit("initial")
 	branch := repo.BranchShowCurrent()
+	ref := repoRef{name: "withcommit"}
+	m := newModel(dir).addRepo("withcommit", repo.Repo()).startLoadRef(ref)
 
-	tp := runTestProgram(t, dir)
-	tp.waitForContent("withcommit", branch) // clean tree → silent state column
+	updated, _ := m.Update(statusCmd(ref, repo.Repo())())
+	loaded := updated.(model).repos[0].status
+	require.NotNil(t, loaded)
+	require.Equal(t, branch, loaded.branch)
+	require.True(t, loaded.clean())
+	require.Empty(t, loaded.stateField())
 }
 
 func TestRepoShowsChangedCount(t *testing.T) {
