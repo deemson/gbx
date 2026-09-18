@@ -1755,12 +1755,13 @@ func (m model) listContent() string {
 		if lipgloss.Width(description) > describeRender {
 			description = truncate(description, describeRender)
 		}
-		if i == cur {
+		selected := i == cur
+		if selected {
 			description = colorDark.Render(description)
 		} else {
 			description = colorDim.Render(description)
 		}
-		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(name), "  ", trackingCol.Render(trackingText(r)), "  ", branchCol.Render(branch), "  ", describeCol.Render(description), "  ", stateCol.Render(stateText(r)), "  ", diffCol.Render(diffText(r))}
+		cols := []string{gutterCol.Render(m.gutterCell(r)), nameCol.Render(name), "  ", trackingCol.Render(trackingText(r)), "  ", branchCol.Render(branch), "  ", describeCol.Render(description), "  ", stateCol.Render(stateText(r, selected)), "  ", diffCol.Render(diffText(r))}
 		if s := r.summary(); s != "" {
 			prefix := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
 			if m.width > 0 {
@@ -1824,7 +1825,7 @@ func (m model) colWidths() (name, branch, describe, tracking, state, diff int) {
 		branch = max(branch, lipgloss.Width(branchLabel(r)))
 		describe = max(describe, lipgloss.Width(describeLabel(r)))
 		tracking = max(tracking, lipgloss.Width(trackingText(r)))
-		state = max(state, lipgloss.Width(stateText(r)))
+		state = max(state, lipgloss.Width(stateText(r, false)))
 		diff = max(diff, lipgloss.Width(diffText(r)))
 	}
 	return
@@ -1980,11 +1981,13 @@ func diffText(r repoEntry) string {
 }
 
 // stateText is the change-state column for a row, empty until status loads.
-func stateText(r repoEntry) string {
+// selected lets dim status signals choose a foreground that contrasts with the
+// cursor band.
+func stateText(r repoEntry, selected bool) string {
 	if r.status == nil {
 		return ""
 	}
-	return r.status.stateField()
+	return r.status.stateField(selected)
 }
 
 // truncate clips s to at most max runes, ending in "…" when it had to cut.

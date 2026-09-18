@@ -707,6 +707,16 @@ func TestDescribeDisplayedImmediatelyAfterBranch(t *testing.T) {
 	require.Contains(t, ansi.Strip(lines[1]), "main  v1.2.3-selected")
 }
 
+func TestUntrackedFilesRemainVisibleOnSelectedRow(t *testing.T) {
+	m := newModel("x").addRepo("selected", git.Repo{}).addRepo("unselected", git.Repo{})
+	status := repoStatus{branch: "main", hasUpstream: true, untracked: 2}
+	m = m.setStatus("selected", status).setStatus("unselected", status)
+
+	lines := strings.Split(m.listContent(), "\n")
+	require.Contains(t, lines[1], colorDark.Render("…2"))
+	require.Contains(t, lines[2], colorDim.Render("…2"))
+}
+
 func TestDescribeLoadingAndEmptyStates(t *testing.T) {
 	m := newModel("x").addRepo("repo", git.Repo{})
 	require.Equal(t, "...", describeText(m.repos[0]))

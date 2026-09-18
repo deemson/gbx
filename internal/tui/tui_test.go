@@ -117,7 +117,7 @@ func TestRepoShowsCleanState(t *testing.T) {
 	require.NotNil(t, loaded)
 	require.Equal(t, branch, loaded.branch)
 	require.True(t, loaded.clean())
-	require.Empty(t, loaded.stateField())
+	require.Empty(t, loaded.stateField(false))
 }
 
 func TestRepoShowsChangedCount(t *testing.T) {

@@ -99,10 +99,16 @@ func (rs repoStatus) sync() string {
 }
 
 // stateField contains the non-empty local-state buckets, each a colored
-// glyph+count in a stable order. A clean tree may still have stashes.
-func (rs repoStatus) stateField() string {
+// glyph+count in a stable order. A clean tree may still have stashes. Untracked
+// files are normally dim, but use a dark foreground on the selected row so they
+// remain visible against the dim cursor band.
+func (rs repoStatus) stateField(selected bool) string {
 	if rs.clean() && rs.stashes == 0 {
 		return ""
+	}
+	untrackedStyle := colorDim
+	if selected {
+		untrackedStyle = colorDark
 	}
 	var segs []string
 	if rs.modified > 0 {
@@ -118,7 +124,7 @@ func (rs repoStatus) stateField() string {
 		segs = append(segs, colorMagenta.Render(fmt.Sprintf("»%d", rs.renamed)))
 	}
 	if rs.untracked > 0 {
-		segs = append(segs, colorDim.Render(fmt.Sprintf("…%d", rs.untracked)))
+		segs = append(segs, untrackedStyle.Render(fmt.Sprintf("…%d", rs.untracked)))
 	}
 	if rs.stashes > 0 {
 		segs = append(segs, colorCyan.Render(fmt.Sprintf("≡%d", rs.stashes)))
