@@ -154,6 +154,15 @@ func TestCmdDoneMarksFailed(t *testing.T) {
 	require.Equal(t, cmdFailed, um.repos[0].cmd)
 }
 
+func TestSuccessfulCommandSettlesToGreenCheck(t *testing.T) {
+	m := drive(t, newModel("x").addRepo("r", git.Repo{}),
+		cmdDoneMsg{name: "r"},
+		statusLoadedMsg{name: "r"}, diffLoadedMsg{name: "r"}, describeLoadedMsg{name: "r"}, branchesLoadedMsg{name: "r"})
+
+	require.Equal(t, cmdOK, m.repos[0].cmd)
+	require.Equal(t, colorGreen.Render("✓"), m.gutterCell(m.repos[0]))
+}
+
 func TestSummaryFailureShowsError(t *testing.T) {
 	m := newModel("x").addRepo("r", git.Repo{})
 
@@ -339,6 +348,7 @@ func TestHelpFooterShowsBackAndQuitBindings(t *testing.T) {
 func TestHelpExplainsRepositoryRowIconsWithListStyles(t *testing.T) {
 	help := helpContent()
 	expected := []iconBinding{
+		{colorGreen.Render("✓"), "command succeeded"},
 		{colorRed.Render("✗"), "load or command failed"},
 		{colorDim.Render("⌀"), "branch has no upstream"},
 		{colorCyan.Render("↑"), "commits ahead of upstream"},

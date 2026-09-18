@@ -1654,13 +1654,17 @@ func (m model) suggestionLine() string {
 
 // gutterCell is a row's 2-wide left indicator: the dim spinner while the row is
 // busy (reading or running a command), a red ✗ once it has settled with a
-// command or load error, and blank otherwise (success is silent).
+// command or load error, a green ✓ after a successful command, and blank after
+// an ordinary successful load.
 func (m model) gutterCell(r repoEntry) string {
 	if r.loading > 0 || r.cmd == cmdRunning {
 		return m.spinner.View()
 	}
 	if r.cmdErr != nil || r.loadErr != nil {
 		return colorRed.Render("✗")
+	}
+	if r.cmd == cmdOK {
+		return colorGreen.Render("✓")
 	}
 	return ""
 }
@@ -1687,7 +1691,7 @@ func (m model) listContent() string {
 		}
 	}
 
-	gutterCol := lipgloss.NewStyle().Width(2) // spinner / ✗ slot, 1 glyph + 1 pad
+	gutterCol := lipgloss.NewStyle().Width(2) // spinner / ✓ / ✗ slot, 1 glyph + 1 pad
 	nameCol := lipgloss.NewStyle().Width(nameRender)
 	branchCol := lipgloss.NewStyle().Width(branchRender)
 	describeCol := lipgloss.NewStyle().Width(describeRender)

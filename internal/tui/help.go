@@ -80,6 +80,7 @@ var filterSyntax = []keyBinding{
 // iconBindings explain every symbolic status shown in a repository row. Each
 // sample uses the same style as its list-view counterpart.
 var iconBindings = []iconBinding{
+	{colorGreen.Render("✓"), "command succeeded"},
 	{colorRed.Render("✗"), "load or command failed"},
 	{colorDim.Render("⌀"), "branch has no upstream"},
 	{colorCyan.Render("↑"), "commits ahead of upstream"},

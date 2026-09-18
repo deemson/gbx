@@ -19,8 +19,8 @@ type cmdDoneMsg struct {
 }
 
 // cmdState is the result state of the last command run on a repo. It drives the
-// left-gutter indicator: cmdRunning spins, cmdFailed settles to ✗, cmdOK/cmdNone
-// are blank (success is silent).
+// left-gutter indicator: cmdRunning spins, cmdFailed settles to ✗, cmdOK settles
+// to ✓, and cmdNone is blank.
 type cmdState int
 
 const (
