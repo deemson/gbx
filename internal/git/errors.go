@@ -60,16 +60,31 @@ func (e *ParseError) Error() string {
 	return strings.Join(errStrings, "; ")
 }
 
-type UnknownRunError struct {
-	Res exec.Result
-	Err error
+// RunError preserves the complete result of a failed git invocation. Cause is
+// the friendly sentinel used for a recognized failure; when it is nil, Err is
+// the underlying process error and Error retains the legacy diagnostic string.
+type RunError struct {
+	Res   exec.Result
+	Err   error
+	Cause error
 }
 
-func NewUnknownRunErr(res exec.Result, err error) *UnknownRunError {
-	return &UnknownRunError{Res: res, Err: err}
+func NewRunErr(res exec.Result, err, cause error) *RunError {
+	return &RunError{Res: res, Err: err, Cause: cause}
 }
 
-func (e *UnknownRunError) Error() string {
+// UnknownRunError remains an alias for callers that used the old name. Both
+// recognized and unrecognized failures now travel through RunError.
+type UnknownRunError = RunError
+
+func NewUnknownRunErr(res exec.Result, err error) *RunError {
+	return NewRunErr(res, err, nil)
+}
+
+func (e *RunError) Error() string {
+	if e.Cause != nil {
+		return e.Cause.Error()
+	}
 	errString := "<nil>"
 	if e.Err != nil {
 		errString = e.Err.Error()
@@ -81,4 +96,24 @@ func (e *UnknownRunError) Error() string {
 		strings.TrimSpace(string(e.Res.Stdout)),
 		strings.TrimSpace(string(e.Res.Stderr)),
 	)
+}
+
+// Unwrap keeps errors.Is working for recognized sentinels and exposes the
+// process failure for an unrecognized invocation.
+func (e *RunError) Unwrap() error {
+	if e.Cause != nil {
+		return e.Cause
+	}
+	return e.Err
+}
+
+// Summary is the concise explanation intended for a row or a details field.
+func (e *RunError) Summary() string {
+	if e.Cause != nil {
+		return e.Cause.Error()
+	}
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+	return "<nil>"
 }

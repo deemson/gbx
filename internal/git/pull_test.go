@@ -57,6 +57,12 @@ func (s *PullSuite) TestNoUpstream() {
 	err := repo.Repo().PullFastForward(ctx)
 	if s.Assert().Error(err) {
 		s.Assert().ErrorIs(err, git.ErrNoUpstream)
+		var runErr *git.RunError
+		if s.Assert().ErrorAs(err, &runErr) {
+			s.Assert().Contains(runErr.Res.Args, "pull")
+			s.Assert().NotEmpty(runErr.Res.Stderr)
+			s.Assert().Equal(1, runErr.Res.ExitCode)
+		}
 	}
 }
 

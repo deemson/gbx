@@ -33,12 +33,16 @@ const (
 // summary is the one-liner shown after the columns: the typed command error if
 // one is set, else the last load cycle's error, else nothing. The command error
 // wins so a failed command's reason isn't masked by its follow-up refresh.
-func (r repoEntry) summary() string {
+func (r repoEntry) currentError() error {
 	if r.cmdErr != nil {
-		return r.cmdErr.Error()
+		return r.cmdErr
 	}
-	if r.loadErr != nil {
-		return r.loadErr.Error()
+	return r.loadErr
+}
+
+func (r repoEntry) summary() string {
+	if err := r.currentError(); err != nil {
+		return err.Error()
 	}
 	return ""
 }

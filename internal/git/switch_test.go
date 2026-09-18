@@ -45,6 +45,10 @@ func (s *SwitchSuite) TestNonExistent() {
 	err := repo.Repo().Switch(ctx, "non-existent")
 	if s.Assert().Error(err) {
 		s.Assert().ErrorIs(err, git.ErrUnknownPathspec)
+		var runErr *git.RunError
+		if s.Assert().ErrorAs(err, &runErr) {
+			s.Assert().Contains(string(runErr.Res.Stderr), "invalid reference")
+		}
 	}
 }
 

@@ -17,11 +17,11 @@ func Open(ctx context.Context, path string) (Repo, error) {
 			stderr := string(res.Stderr)
 			switch {
 			case strings.Contains(stderr, "not a git repository"):
-				return Repo{}, ErrNotRepository
+				return Repo{}, NewRunErr(res, err, ErrNotRepository)
 			case strings.Contains(stderr, "Not a directory"):
-				return Repo{}, ErrNotDirectory
+				return Repo{}, NewRunErr(res, err, ErrNotDirectory)
 			case strings.Contains(stderr, "No such file or directory"):
-				return Repo{}, ErrDoesNotExist
+				return Repo{}, NewRunErr(res, err, ErrDoesNotExist)
 			}
 		}
 		return Repo{}, NewUnknownRunErr(res, err)

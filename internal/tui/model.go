@@ -150,6 +150,12 @@ type model struct {
 	// the top each time help opens.
 	help viewport.Model
 
+	// errorView backs the automatic, non-modal details panel for the cursored
+	// failed row. errorViewKey identifies the selected error whose content it
+	// holds, so changing rows/errors resets the scroll position exactly once.
+	errorView    viewport.Model
+	errorViewKey string
+
 	// spinner is the single shared loading spinner rendered in every busy row's
 	// left gutter. spinning guards its tick loop: the tick is kicked once when
 	// work starts and stops itself when nothing is busy (see kickSpinner / the
@@ -180,6 +186,7 @@ func newModelWithDirectories(dirs []Directory) model {
 	sp.Style = colorDim
 	hv := viewport.New()
 	hv.SetContent(helpContent())
+	ev := viewport.New()
 	sections := make([]directorySection, len(dirs))
 	for i, d := range dirs {
 		path := d.Path
@@ -204,6 +211,7 @@ func newModelWithDirectories(dirs []Directory) model {
 		pid:       os.Getpid(),
 		spinner:   sp,
 		help:      hv,
+		errorView: ev,
 	}
 }
 
@@ -236,6 +244,18 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	updated, cmd := m.update(msg)
+	if next, ok := updated.(model); ok {
+		next = next.syncErrorPanel()
+		if next.mode == modeList {
+			next = next.clampView()
+		}
+		return next, cmd
+	}
+	return updated, cmd
+}
+
+func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -251,6 +271,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.help, cmd = m.help.Update(msg)
 			return m, cmd
+		}
+		if m.mode == modeList {
+			if _, _, ok := m.selectedError(); ok {
+				return m.scrollErrorPanel(msg), nil
+			}
 		}
 		return m, nil
 	case entriesLoadedMsg:
@@ -384,6 +409,11 @@ func (m model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+d":
 		m.cursor += m.halfPage()
 		return m.clampView(), nil
+	case "pgup", "pgdown":
+		if _, _, ok := m.selectedError(); ok {
+			return m.scrollErrorPanel(msg), nil
+		}
+		return m, nil
 	case "enter":
 		return m.openActionMenu()
 	case "ctrl+f":
@@ -867,16 +897,28 @@ func (m model) cursorVisualLine() int {
 	return 0
 }
 
-// listHeight is the scroll window's height: the terminal minus the 3-row framed
-// header (top, bottom, rule) and the 2-row footer (rule, hints). 0 before the
-// first resize. Deliberately marker-independent — the scroll markers' counts
-// depend on this height, so it must not route back through footer().
-func (m model) listHeight() int {
+// baseListHeight is the content area between the 3-row framed header and the
+// 2-row footer before an error pane takes any space. It is deliberately
+// marker-independent because the scroll markers depend on the resulting height.
+func (m model) baseListHeight() int {
 	if m.height <= 0 {
 		return 0
 	}
-	h := max(m.height-3-2, 1)
-	return h
+	return max(m.height-3-2, 1)
+}
+
+// listHeight is the repository scroll window. In list mode an automatic error
+// pane occupies the bottom of the content area, pushing the list upward while
+// leaving at least one repository row visible.
+func (m model) listHeight() int {
+	h := m.baseListHeight()
+	if h == 0 || m.mode != modeList {
+		return h
+	}
+	if pane, ok := m.makeErrorPanelSpec(); ok {
+		h -= pane.paneHeight
+	}
+	return max(h, 1)
 }
 
 // halfPage is the cursor distance for ctrl+u/ctrl+d: half the window height,
@@ -1253,7 +1295,13 @@ func (m model) View() tea.View {
 	if m.mode == modeActionMenu {
 		return tea.View{Content: m.actionMenuOverlay(), AltScreen: true}
 	}
-	return tea.View{Content: m.listView(), AltScreen: true}
+	view := tea.View{Content: m.listView(), AltScreen: true}
+	if m.mode == modeList {
+		if _, ok := m.makeErrorPanelSpec(); ok {
+			view.MouseMode = tea.MouseModeCellMotion
+		}
+	}
+	return view
 }
 
 // listView composes the always-on screen: the framed header, the repo list sized
@@ -1265,7 +1313,12 @@ func (m model) listView() string {
 	footer := m.footer()
 	if m.height > 0 {
 		listArea := lipgloss.NewStyle().Height(m.listHeight()).Render(list)
-		return lipgloss.JoinVertical(lipgloss.Left, header, listArea, footer)
+		parts := []string{header, listArea}
+		if pane := m.errorPane(); pane != "" {
+			parts = append(parts, pane)
+		}
+		parts = append(parts, footer)
+		return lipgloss.JoinVertical(lipgloss.Left, parts...)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, header, list, footer)
 }

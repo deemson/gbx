@@ -44,7 +44,7 @@ func (r Repo) DiffNumStatHead(ctx context.Context) (DiffNumStat, error) {
 		if res.ExitCode == 128 {
 			stderr := string(res.Stderr)
 			if strings.Contains(stderr, "'HEAD': unknown revision") {
-				return DiffNumStat{}, ErrRepositoryHasNoCommits
+				return DiffNumStat{}, NewRunErr(res, err, ErrRepositoryHasNoCommits)
 			}
 		}
 		return DiffNumStat{}, NewUnknownRunErr(res, err)
@@ -59,11 +59,11 @@ func (r Repo) Checkout(ctx context.Context, what string) error {
 			stderr := string(res.Stderr)
 			switch {
 			case strings.Contains(stderr, fmt.Sprintf("pathspec '%s' did not match", what)):
-				return ErrUnknownPathspec
+				return NewRunErr(res, err, ErrUnknownPathspec)
 			case strings.Contains(stderr, "local changes to the following files would be overwritten"):
-				return ErrLocalChangesOverwritten
+				return NewRunErr(res, err, ErrLocalChangesOverwritten)
 			case strings.Contains(stderr, "untracked working tree files would be overwritten"):
-				return ErrUntrackedOverwritten
+				return NewRunErr(res, err, ErrUntrackedOverwritten)
 			}
 		}
 		return NewUnknownRunErr(res, err)
@@ -77,7 +77,7 @@ func (r Repo) CheckoutBranch(ctx context.Context, name string) error {
 		if res.ExitCode == 128 {
 			stderr := string(res.Stderr)
 			if strings.Contains(stderr, fmt.Sprintf("a branch named '%s' already exists", name)) {
-				return ErrBranchAlreadyExists
+				return NewRunErr(res, err, ErrBranchAlreadyExists)
 			}
 		}
 		return NewUnknownRunErr(res, err)
@@ -107,7 +107,7 @@ func (r Repo) Fetch(ctx context.Context) error {
 		if res.ExitCode == 128 {
 			stderr := string(res.Stderr)
 			if strings.Contains(stderr, "Could not read from remote repository") {
-				return ErrNoRemote
+				return NewRunErr(res, err, ErrNoRemote)
 			}
 		}
 		return NewUnknownRunErr(res, err)
@@ -121,15 +121,15 @@ func (r Repo) PullFastForward(ctx context.Context) error {
 		stderr := string(res.Stderr)
 		switch {
 		case res.ExitCode == 1 && strings.Contains(stderr, "There is no tracking information"):
-			return ErrNoUpstream
+			return NewRunErr(res, err, ErrNoUpstream)
 		case res.ExitCode == 128 && strings.Contains(stderr, "Not possible to fast-forward"):
-			return ErrNotFastForward
+			return NewRunErr(res, err, ErrNotFastForward)
 		case res.ExitCode == 1 && strings.Contains(stderr, "no such ref was fetched"):
-			return ErrMergeRefNotFetched
+			return NewRunErr(res, err, ErrMergeRefNotFetched)
 		case res.ExitCode == 1 && strings.Contains(stderr, "local changes to the following files would be overwritten"):
-			return ErrLocalChangesOverwritten
+			return NewRunErr(res, err, ErrLocalChangesOverwritten)
 		case res.ExitCode == 1 && strings.Contains(stderr, "untracked working tree files would be overwritten"):
-			return ErrUntrackedOverwritten
+			return NewRunErr(res, err, ErrUntrackedOverwritten)
 		}
 		return NewUnknownRunErr(res, err)
 	}
@@ -142,11 +142,11 @@ func (r Repo) Switch(ctx context.Context, branch string) error {
 		stderr := string(res.Stderr)
 		switch {
 		case res.ExitCode == 128 && strings.Contains(stderr, fmt.Sprintf("invalid reference: %s", branch)):
-			return ErrUnknownPathspec
+			return NewRunErr(res, err, ErrUnknownPathspec)
 		case res.ExitCode == 1 && strings.Contains(stderr, "local changes to the following files would be overwritten"):
-			return ErrLocalChangesOverwritten
+			return NewRunErr(res, err, ErrLocalChangesOverwritten)
 		case res.ExitCode == 1 && strings.Contains(stderr, "untracked working tree files would be overwritten"):
-			return ErrUntrackedOverwritten
+			return NewRunErr(res, err, ErrUntrackedOverwritten)
 		}
 		return NewUnknownRunErr(res, err)
 	}
@@ -159,7 +159,7 @@ func (r Repo) SwitchCreate(ctx context.Context, branch string) error {
 		if res.ExitCode == 128 {
 			stderr := string(res.Stderr)
 			if strings.Contains(stderr, fmt.Sprintf("a branch named '%s' already exists", branch)) {
-				return ErrBranchAlreadyExists
+				return NewRunErr(res, err, ErrBranchAlreadyExists)
 			}
 		}
 		return NewUnknownRunErr(res, err)
@@ -171,7 +171,7 @@ func (r Repo) Describe(ctx context.Context) (string, error) {
 	res, err := r.runGit(ctx, "describe", "--always")
 	if err != nil {
 		if res.ExitCode == 128 && strings.Contains(string(res.Stderr), "Not a valid object name HEAD") {
-			return "", ErrRepositoryHasNoCommits
+			return "", NewRunErr(res, err, ErrRepositoryHasNoCommits)
 		}
 		return "", NewUnknownRunErr(res, err)
 	}
