@@ -878,9 +878,21 @@ func TestScrollMarkersAppearOnlyWhenContentHidden(t *testing.T) {
 	require.NotContains(t, atBottom, "↓") // nothing hidden below
 }
 
-func TestEnterOpensActionMenuOverCursor(t *testing.T) {
+func TestEnterRunsSoleAction(t *testing.T) {
 	m := newModel("x").addRepo("a", git.Repo{})
 	m.appConfig = appconfig.Config{Actions: []appconfig.Action{{Label: "lazygit", Command: []string{"lazygit"}}}}
+
+	fired, cmd := m.Update(keyEnter)
+	require.Equal(t, modeList, fired.(model).mode)
+	require.NotNil(t, cmd)
+}
+
+func TestEnterOpensActionMenuForMultipleActions(t *testing.T) {
+	m := newModel("x").addRepo("a", git.Repo{})
+	m.appConfig = appconfig.Config{Actions: []appconfig.Action{
+		{Label: "lazygit", Command: []string{"lazygit"}},
+		{Label: "shell", Command: []string{"sh"}},
+	}}
 
 	opened, _ := m.Update(keyEnter)
 	require.Equal(t, modeActionMenu, opened.(model).mode)

@@ -792,14 +792,19 @@ func (m model) updateHelp(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	return m, cmd
 }
 
-// openActionMenu floats the enter-key digit menu over the cursored repo. A no-op
-// when nothing is matched (there's no row to act on); otherwise it pins the
-// cursor into range first so the menu titles the row it will actually run on.
+// openActionMenu runs the sole configured action immediately, or floats the
+// enter-key digit menu over the cursored repo when multiple actions are
+// configured. It is a no-op when nothing is matched (there's no row to act on);
+// otherwise it pins the cursor into range first so the action or menu targets
+// the row it will actually run on.
 func (m model) openActionMenu() (model, tea.Cmd) {
 	if len(m.matched()) == 0 {
 		return m, nil
 	}
 	m = m.clampView()
+	if len(m.appConfig.Actions) == 1 {
+		return m.fireAction(0)
+	}
 	m.mode = modeActionMenu
 	return m, nil
 }

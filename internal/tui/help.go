@@ -28,7 +28,7 @@ var listBindings = []keyBinding{
 	{"?", "toggle this help"},
 	{"↑/↓ ctrl+p/ctrl+n / click", "move the cursor"},
 	{"ctrl+u/ctrl+d", "half-page up/down"},
-	{"enter", "open the actions menu for the cursored repo"},
+	{"enter", "run the sole action, or open the actions menu"},
 	{"ctrl+f", "filter prompt"},
 	{"ctrl+s", "search prompt (jump cursor to matches)"},
 	{"r", "refresh filtered repos"},

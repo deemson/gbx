@@ -64,7 +64,7 @@ currently matching the filter**:
 | `p`       | pull (fast-forward only)                |
 | `s`       | switch to a branch                      |
 | `b`       | create and switch to a new branch       |
-| `enter`   | open the actions menu for the repo at the cursor |
+| `enter`   | run the sole action, or open the actions menu for the repo at the cursor |
 | `ctrl+f`  | open the filter prompt                  |
 | `ctrl+s`  | open the search prompt (jump the cursor to matches) |
 | `?`       | show all key bindings                   |
@@ -99,9 +99,10 @@ newlines are converted to spaces.
 
 ## Configuration
 
-`gbx` works with no config at all. Configuration only customizes the **actions
-menu** — the tools you can launch in the cursored repo with `enter`. By default
-that menu offers `lazygit` and your shell.
+`gbx` works with no config at all. Configuration customizes the **actions** —
+the tools you can launch in the cursored repo with `enter`. With one configured
+action, `enter` runs it immediately; otherwise it opens an actions menu. By
+default that menu offers `lazygit` and your shell.
 
 Write the default config (and a companion JSON schema for editor validation) to
 `$XDG_CONFIG_HOME/gbx/config.toml` (i.e. `~/.config/gbx/config.toml`):
