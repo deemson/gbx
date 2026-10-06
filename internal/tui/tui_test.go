@@ -157,7 +157,9 @@ func TestRunSwitchSwitchesToBranch(t *testing.T) {
 	repo.Checkout(start) // leave "feature" existing but not current
 
 	tp := runTestProgram(t, dir)
-	tp.waitForContent("proj", start)
+	// The alt-screen renderer may split an in-place branch update with terminal
+	// control sequences; wait only for the newly appended repository row.
+	tp.waitForContent("proj")
 
 	// `s` opens the switch prompt; type the branch; Enter runs.
 	tp.send("s")
