@@ -812,7 +812,7 @@ func (m model) openActionMenu() (model, tea.Cmd) {
 // updateActionMenu handles keys with the action menu open. esc/enter/q dismiss
 // it; a digit 1–9 mapping to an existing action fires it immediately in the
 // cursored repo's directory (out-of-range digits are ignored). The menu closes
-// the instant an action fires — the TUI is then suspended by ExecProcess.
+// the instant an action fires — the TUI is then suspended by Bubble Tea's executor.
 func (m model) updateActionMenu(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "enter", "q":
@@ -841,7 +841,7 @@ func (m model) fireAction(idx int) (model, tea.Cmd) {
 	if err != nil {
 		return m, func() tea.Msg { return cmdDoneMsg{ref: r.ref(), err: err} }
 	}
-	return m, runAction(r.ref(), argv, r.repo.Path())
+	return m, runAction(r.ref(), argv, r.repo.Path(), m.actionWindowTitle(r))
 }
 
 // scrollMargin is the rows clampView keeps between the cursor and the window's
@@ -1375,16 +1375,16 @@ func (m model) cycleSuggestion(delta int) model {
 
 func (m model) View() tea.View {
 	if m.tooNarrow() {
-		return tea.View{Content: m.tooNarrowScreen(), AltScreen: true}
+		return tea.View{Content: m.tooNarrowScreen(), AltScreen: true, WindowTitle: neutralWindowTitle}
 	}
 	if m.mode == modeHelp {
 		content := lipgloss.JoinVertical(lipgloss.Left, m.helpHeader(), m.help.View(), m.helpFooter())
-		return tea.View{Content: content, AltScreen: true, MouseMode: tea.MouseModeCellMotion}
+		return tea.View{Content: content, AltScreen: true, MouseMode: tea.MouseModeCellMotion, WindowTitle: neutralWindowTitle}
 	}
 	if m.mode == modeActionMenu {
-		return tea.View{Content: m.actionMenuOverlay(), AltScreen: true}
+		return tea.View{Content: m.actionMenuOverlay(), AltScreen: true, WindowTitle: neutralWindowTitle}
 	}
-	view := tea.View{Content: m.listView(), AltScreen: true}
+	view := tea.View{Content: m.listView(), AltScreen: true, WindowTitle: neutralWindowTitle}
 	if m.mode == modeList {
 		view.MouseMode = tea.MouseModeCellMotion
 	}

@@ -67,10 +67,10 @@ func runCmd(ref repoRef, label string, run func(context.Context) error) tea.Cmd 
 // (interactive tools exit non-zero for benign reasons); only a launch failure
 // — binary missing / not executable — comes back as a row error. Either way the
 // repo is refreshed via cmdDoneMsg, since the action may have changed its state.
-func runAction(ref repoRef, argv []string, dir string) tea.Cmd {
+func runAction(ref repoRef, argv []string, dir, title string) tea.Cmd {
 	c := exec.Command(argv[0], argv[1:]...) //nolint:gosec
 	c.Dir = dir
-	return tea.ExecProcess(c, func(err error) tea.Msg {
+	return tea.Exec(newTitledExecCommand(c, title), func(err error) tea.Msg {
 		var exitErr *exec.ExitError
 		if err != nil && !errors.As(err, &exitErr) {
 			return cmdDoneMsg{ref: ref, err: err}
