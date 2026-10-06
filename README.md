@@ -53,8 +53,9 @@ gbx open ./services ./tools
 
 ![gbx open multiple directories](assets/open.gif)
 
-From the list, single keys run a git command across **every repo currently
-matching the filter**:
+Click a visible repository row to move the cursor to it; clicks do not run an
+action. From the list, single keys run a git command across **every repo
+currently matching the filter**:
 
 | key       | action                                  |
 | --------- | --------------------------------------- |

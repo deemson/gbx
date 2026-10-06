@@ -266,6 +266,8 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.clampView(), nil
 	case tea.KeyPressMsg:
 		return m.updateKey(msg)
+	case tea.MouseClickMsg:
+		return m.updateClick(msg)
 	case tea.MouseWheelMsg:
 		if m.mode == modeHelp {
 			var cmd tea.Cmd
@@ -275,6 +277,15 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == modeList {
 			if _, _, ok := m.selectedError(); ok {
 				return m.scrollErrorPanel(msg), nil
+			}
+			// Mouse reporting is needed for row clicks and consequently captures
+			// the terminal wheel. Match the ordinary list navigation when there
+			// is no error pane for the wheel to scroll.
+			switch msg.Button {
+			case tea.MouseWheelUp:
+				return m.updateList(tea.KeyPressMsg{Code: tea.KeyUp})
+			case tea.MouseWheelDown:
+				return m.updateList(tea.KeyPressMsg{Code: tea.KeyDown})
 			}
 		}
 		return m, nil
@@ -347,6 +358,24 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				describeCmd(msg.ref, repo), branchesCmd(msg.ref, repo), tick)
 		}
 		return m, nil
+	}
+	return m, nil
+}
+
+// updateClick selects only repository rows in the default list view. Mouse
+// coordinates are terminal-relative, while the scroll window starts below the
+// three-row header, so translate before looking up the visual list line.
+func (m model) updateClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
+	if m.mode != modeList || msg.Button != tea.MouseLeft {
+		return m, nil
+	}
+	line := msg.Y - 3
+	if line < 0 || line >= m.listHeight() {
+		return m, nil
+	}
+	if cursor, ok := m.repoAtVisualLine(m.top + line); ok {
+		m.cursor = cursor
+		return m.clampView(), nil
 	}
 	return m, nil
 }
@@ -865,6 +894,37 @@ func (m model) visualLineCount() int {
 	return n
 }
 
+// repoAtVisualLine maps an unscrolled list line to its index in matched. It
+// deliberately mirrors listContent: headings and empty/loading status rows do
+// not select a repository.
+func (m model) repoAtVisualLine(target int) (int, bool) {
+	matched := m.matched()
+	line, repo := 0, 0
+	for section := range m.sections {
+		if !m.sections[section].hideHeading {
+			if line == target {
+				return 0, false
+			}
+			line++
+		}
+		start := repo
+		for repo < len(matched) && matched[repo].section == section {
+			if line == target {
+				return repo, true
+			}
+			line++
+			repo++
+		}
+		if repo == start {
+			if line == target {
+				return 0, false
+			}
+			line++
+		}
+	}
+	return 0, false
+}
+
 func (m model) cursorVisualLine() int {
 	ci := m.cursorIndex()
 	if ci < 0 {
@@ -1297,9 +1357,7 @@ func (m model) View() tea.View {
 	}
 	view := tea.View{Content: m.listView(), AltScreen: true}
 	if m.mode == modeList {
-		if _, ok := m.makeErrorPanelSpec(); ok {
-			view.MouseMode = tea.MouseModeCellMotion
-		}
+		view.MouseMode = tea.MouseModeCellMotion
 	}
 	return view
 }

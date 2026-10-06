@@ -26,7 +26,7 @@ type iconBinding struct {
 // keys are explained.
 var listBindings = []keyBinding{
 	{"?", "toggle this help"},
-	{"↑/↓ ctrl+p/ctrl+n", "move the cursor"},
+	{"↑/↓ ctrl+p/ctrl+n / click", "move the cursor"},
 	{"ctrl+u/ctrl+d", "half-page up/down"},
 	{"enter", "open the actions menu for the cursored repo"},
 	{"ctrl+f", "filter prompt"},
