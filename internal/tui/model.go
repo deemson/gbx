@@ -266,6 +266,8 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.clampView(), nil
 	case tea.KeyPressMsg:
 		return m.updateKey(msg)
+	case tea.PasteMsg:
+		return m.updatePaste(msg)
 	case tea.MouseClickMsg:
 		return m.updateClick(msg)
 	case tea.MouseWheelMsg:
@@ -378,6 +380,28 @@ func (m model) updateClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 		return m.clampView(), nil
 	}
 	return m, nil
+}
+
+// updatePaste routes bracketed paste to the shared input only while a prompt
+// owns it. textinput performs the same tab/newline normalization as typed
+// input; search and branch prompts then retain their normal post-input work.
+func (m model) updatePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
+	switch m.mode {
+	case modeFilterPrompt:
+		var cmd tea.Cmd
+		m.prompt, cmd = m.prompt.Update(msg)
+		return m.clampView(), cmd
+	case modeSearchPrompt:
+		var cmd tea.Cmd
+		m.prompt, cmd = m.prompt.Update(msg)
+		return m.jumpToFirstHit().clampView(), cmd
+	case modeSwitchPrompt, modeBranchPrompt:
+		var cmd tea.Cmd
+		m.prompt, cmd = m.prompt.Update(msg)
+		return m.recomputeSuggestions(), cmd
+	default:
+		return m, nil
+	}
 }
 
 func (m model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {

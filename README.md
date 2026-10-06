@@ -94,7 +94,8 @@ either prompt.
 then run across exactly that set. **Search** (`ctrl+s`) leaves every repo visible
 and instead jumps the cursor to the matches, dimming the rest — `↓`/`↑` walk
 between them. Filter is for *acting on* a subset; search is for *finding* one
-repo in a list you want to keep whole.
+repo in a list you want to keep whole. All prompts accept pasted text; tabs and
+newlines are converted to spaces.
 
 ## Configuration
 
