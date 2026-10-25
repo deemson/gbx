@@ -25,15 +25,15 @@ func (s *FromBytesSuite) TestBadTOML() {
 	}{
 		"bad number": {
 			cfg: []string{"key = value"},
-			err: "line 1, column 7: incomplete number",
+			err: "line 1, column 7: unexpected character U+0076 'v' at start of value",
 		},
 		"non-terminated string": {
 			cfg: []string{`key = "value`},
-			err: `line 1, column 1: basic string not terminated by "`,
+			err: "line 1, column 12: unterminated basic string",
 		},
 		"unterminated table header": {
 			cfg: []string{"[key"},
-			err: "line 1, column 1: expected character ] but the document ended here",
+			err: "line 1, column 4: expected ']' to close table name",
 		},
 	}
 	for name, testCase := range testCases {
