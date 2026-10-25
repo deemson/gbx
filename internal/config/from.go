@@ -10,8 +10,7 @@ import (
 func FromBytes(data []byte) (Config, error) {
 	var v any
 	if err := toml.Unmarshal(data, &v); err != nil {
-		var decErr *toml.DecodeError
-		if errors.As(err, &decErr) {
+		if decErr, ok := errors.AsType[*toml.DecodeError](err); ok {
 			return Config{}, &TOMLError{decErr}
 		}
 		return Config{}, err

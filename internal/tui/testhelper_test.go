@@ -77,7 +77,10 @@ func runTestModel(t *testing.T, m model) *testProgram {
 	t.Cleanup(func() {
 		p.Quit()
 		select {
-		case <-errCh:
+		case err := <-errCh:
+			if err != nil {
+				t.Logf("test program exited with error: %v", err)
+			}
 		case <-time.After(2 * time.Second):
 			t.Log("test program did not quit within 2s")
 		}
