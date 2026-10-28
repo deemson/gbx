@@ -1376,16 +1376,16 @@ func (m model) cycleSuggestion(delta int) model {
 
 func (m model) View() tea.View {
 	if m.tooNarrow() {
-		return tea.View{Content: m.tooNarrowScreen(), AltScreen: true, WindowTitle: neutralWindowTitle}
+		return tea.View{Content: m.tooNarrowScreen(), AltScreen: true, WindowTitle: m.windowTitle()}
 	}
 	if m.mode == modeHelp {
 		content := lipgloss.JoinVertical(lipgloss.Left, m.helpHeader(), m.help.View(), m.helpFooter())
-		return tea.View{Content: content, AltScreen: true, MouseMode: tea.MouseModeCellMotion, WindowTitle: neutralWindowTitle}
+		return tea.View{Content: content, AltScreen: true, MouseMode: tea.MouseModeCellMotion, WindowTitle: m.windowTitle()}
 	}
 	if m.mode == modeActionMenu {
-		return tea.View{Content: m.actionMenuOverlay(), AltScreen: true, WindowTitle: neutralWindowTitle}
+		return tea.View{Content: m.actionMenuOverlay(), AltScreen: true, WindowTitle: m.windowTitle()}
 	}
-	view := tea.View{Content: m.listView(), AltScreen: true, WindowTitle: neutralWindowTitle}
+	view := tea.View{Content: m.listView(), AltScreen: true, WindowTitle: m.windowTitle()}
 	if m.mode == modeList {
 		view.MouseMode = tea.MouseModeCellMotion
 	}

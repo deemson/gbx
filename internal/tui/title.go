@@ -27,6 +27,19 @@ func (m model) actionWindowTitle(r repoEntry) string {
 	return neutralWindowTitle + " — " + identity
 }
 
+// windowTitle names the committed filter while it narrows the list, so a tab
+// shows which repo set the git actions target. The live prompt draft is ignored.
+func (m model) windowTitle() string {
+	if len(parseTerms(m.filter)) == 0 {
+		return neutralWindowTitle
+	}
+	pattern := stripControls(strings.Join(strings.Fields(m.filter), " "))
+	if pattern == "" {
+		return neutralWindowTitle
+	}
+	return neutralWindowTitle + " — filter: " + pattern
+}
+
 func (m model) discoveryComplete() bool {
 	for _, section := range m.sections {
 		if !section.complete {

@@ -37,6 +37,35 @@ func TestActionWindowTitleStripsControlsAndFallsBack(t *testing.T) {
 	require.Equal(t, "gbx — repo", m.actionWindowTitle(m.repos[0]))
 }
 
+func TestWindowTitleFollowsCommittedFilter(t *testing.T) {
+	m := newModel("x").addRepo("api", git.Repo{})
+	require.Equal(t, "gbx", m.View().WindowTitle)
+
+	m.filter = "  api   !old "
+	require.Equal(t, "gbx — filter: api !old", m.View().WindowTitle)
+
+	m.mode = modeHelp
+	require.Equal(t, "gbx — filter: api !old", m.View().WindowTitle)
+	m.mode = modeActionMenu
+	require.Equal(t, "gbx — filter: api !old", m.View().WindowTitle)
+	m.mode = modeList
+
+	m.filter = "a\x1b]2;bad\x07"
+	require.Equal(t, "gbx — filter: a]2;bad", m.View().WindowTitle)
+
+	for _, inactive := range []string{"", "   ", "!", "^"} {
+		m.filter = inactive
+		require.Equal(t, "gbx", m.View().WindowTitle, "filter %q", inactive)
+	}
+}
+
+func TestWindowTitleIgnoresFilterDraft(t *testing.T) {
+	m := newModel("x").addRepo("api", git.Repo{})
+	m, _ = m.openFilterPrompt()
+	m.prompt.SetValue("api")
+	require.Equal(t, "gbx", m.View().WindowTitle)
+}
+
 func TestTitledExecCommandWritesTitleBeforeChildAndForwardsOutput(t *testing.T) {
 	cmd := newTitledExecCommand(exec.Command("sh", "-c", "printf child"), "gbx — repo")
 	var stdout bytes.Buffer
