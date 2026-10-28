@@ -4,6 +4,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/deemson/gbx/internal/git"
 	"github.com/stretchr/testify/require"
 )
 
@@ -170,4 +171,22 @@ func TestMatchPositions(t *testing.T) {
 	for _, c := range cases {
 		require.Equal(t, c.want, positions(c.pattern, c.s), "pattern %q", c.pattern)
 	}
+}
+
+// The filter underline follows the live draft only while the prompt is open:
+// Enter commits the filter, which keeps narrowing the rows but drops the
+// underline. Reopening lights the pre-filled draft again.
+func TestFilterHighlightOnlyWhilePromptOpen(t *testing.T) {
+	m := newModel("x").addRepo("api", git.Repo{})
+
+	m = drive(t, m, keyCtrlF)
+	m = send(t, m, "api")
+	require.Equal(t, "api", m.highlightSource()) // live draft lights up
+
+	m = drive(t, m, keyEnter)
+	require.Equal(t, "api", m.filter)
+	require.Empty(t, m.highlightSource()) // committed: no underline
+
+	m = drive(t, m, keyCtrlF)
+	require.Equal(t, "api", m.highlightSource()) // reopened: pre-filled draft lights up
 }

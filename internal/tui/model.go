@@ -1047,13 +1047,14 @@ func (m model) effectiveFilter() string {
 }
 
 // highlightSource is the pattern whose matches listContent underlines: the live
-// search draft while the search prompt is open, so every visible hit lights up
-// as you type; the effective filter otherwise.
+// draft while the search or filter prompt is open, so every visible hit lights
+// up as you type; nothing otherwise — a committed filter narrows the rows but
+// leaves them unadorned.
 func (m model) highlightSource() string {
-	if m.mode == modeSearchPrompt {
+	if m.mode == modeSearchPrompt || m.mode == modeFilterPrompt {
 		return m.prompt.Value()
 	}
-	return m.effectiveFilter()
+	return ""
 }
 
 // runOnFiltered marks every repo currently matching the filter as running and
@@ -1841,9 +1842,9 @@ func (m model) listContent() string {
 
 	// Underline the matched characters, scoped to the searched field: C-2 lights
 	// only the name, C-3 only the branch, C-1 (default) each column independently
-	// wherever it matched. The pattern is the search draft while searching (search
-	// doesn't narrow, so effectiveFilter still returns the committed filter),
-	// otherwise the effective filter. Terms are parsed once for all rows.
+	// wherever it matched. The pattern is the open prompt's draft (search or
+	// filter); with no prompt open nothing is underlined, even under a committed
+	// filter. Terms are parsed once for all rows.
 	terms := parseTerms(m.highlightSource())
 	hlName := m.field != fieldBranch
 	hlBranch := m.field != fieldName
